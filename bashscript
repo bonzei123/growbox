@@ -1,0 +1,20 @@
+# camera cronjob
+*/5 * * * * python3 /home/pi/camera_capture.py
+* * * * * python3 /home/pi/growbox_monitor/log_temperature.py >> /home/pi/growbox_monitor/log_temperature.log 2>&1
+
+
+# picamera2 installieren (falls nicht bereits installiert)
+pip3 install picamera2
+
+
+# MJPG-Streamer installieren
+sudo apt-get update
+sudo apt-get install -y mjpg-streamer
+sudo apt-get install -y ffmpeg
+
+
+# mjpg stream
+mjpg_streamer -i "input_libcamera.so -r 1280x720 -f 20 -d /dev/video0" -o "output_http.so -w /usr/local/share/mjpg-streamer/www -p 8080"
+mjpg_streamer -i "input_libcamera.so -r 1920x1080 -f 30 -d /dev/video0" -o "output_http.so -w /usr/local/share/mjpg-streamer/www -p 8080"
+
+
