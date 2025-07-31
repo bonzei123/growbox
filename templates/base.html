@@ -3,9 +3,9 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>{% block title %}Grow Box Monitor{% endblock %}</title> {# Ein Block für den Seitentitel #}
+    <title>{% block title %}Grow Box Monitor{% endblock %}</title>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
-    {% block head_extra %}{% endblock %} {# Ein Block für zusätzliche Elemente im Head (z.B. Chart.js) #}
+    {% block head_extra %}{% endblock %}
     <style>
         body {
             font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
@@ -13,8 +13,7 @@
             background-color: #121212;
             color: #e0e0e0;
             display: flex;
-            justify-content: center;
-            align-items: flex-start;
+            flex-direction: column;
             min-height: 100vh;
             padding: 20px 0;
         }
@@ -26,6 +25,10 @@
             border-radius: 12px;
             box-shadow: 0 5px 20px rgba(0,0,0,0.5);
             border: 1px solid #444;
+            flex-grow: 1;
+            margin-left: auto;
+            margin-right: auto;
+            padding-bottom: 20px;
         }
         h1 {
             color: #8bc34a;
@@ -37,37 +40,59 @@
         }
         h2 {
             color: #aed581;
-            margin-top: 25px;
-            margin-bottom: 20px;
+            margin-top: 0;
+            margin-bottom: 15px;
             font-size: 1.8em;
             border-bottom: 2px solid #5cb85c;
             padding-bottom: 5px;
+            padding-top: 5px;
         }
 
-        /* Gemeinsame Stile für Datenkarten und Sektionen */
-        .data-section, .graph-section, .camera-section {
+        /* --- Widget-Grundstruktur --- */
+        .widget-grid-container {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+            gap: 20px;
+            align-items: start;
+        }
+        .widget {
             background-color: #383838;
             padding: 20px;
             border-radius: 8px;
             box-shadow: 0 2px 8px rgba(0,0,0,0.3);
-            margin-bottom: 30px;
+            cursor: grab;
+            transition: transform 0.2s ease-in-out;
+            min-height: 100px; /* Mindesthöhe, damit Drag-Handle immer sichtbar */
+            display: flex;
+            flex-direction: column;
         }
-        .data-section {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
-            gap: 20px;
+        .widget:active {
+            cursor: grabbing;
         }
-        .data-card {
-            background-color: #383838; /* Wiederholung, aber kann spezifisch sein */
-            padding: 20px;
-            border-radius: 8px;
-            box-shadow: 0 2px 8px rgba(0,0,0,0.3);
+        .widget.sortable-ghost {
+            opacity: 0.4;
+            background-color: #555;
+            border: 2px dashed #8bc34a;
+        }
+
+        /* --- Datenkarten innerhalb eines Widgets (jetzt nur noch ein einzelnes item) --- */
+        /* Die früheren .data-card-grid und .data-card sind jetzt nicht mehr relevant, da jeder Wert ein eigenes Widget ist */
+        /* Wir nutzen den Stil von .data-card-item direkt, da es der Inhalt des Widgets ist */
+        .data-card-item { /* Dies ist der Styling-Block für den Inhalt der einzelnen Daten-Widgets */
+            background-color: #454545;
+            padding: 15px;
+            border-radius: 6px;
+            box-shadow: 0 1px 4px rgba(0,0,0,0.2);
             display: flex;
             align-items: center;
             justify-content: space-between;
+            /* Für einzelne Werte, die zentriert werden sollen */
+            margin: auto; /* Zentriert horizontal innerhalb des Widgets, wenn nötig */
+            width: 100%; /* Stellt sicher, dass es die volle Breite des Widgets einnimmt */
+            box-sizing: border-box; /* Padding wird zur Breite hinzugezählt */
         }
-        .data-card i {
-            font-size: 2.5em;
+        .data-card-item i { /* Icons im Datenwert-Widget */
+            font-size: 1.8em;
             color: #8bc34a;
             margin-right: 15px;
         }
@@ -78,15 +103,49 @@
             display: block;
             color: #b0b0b0;
             font-size: 0.9em;
-            margin-bottom: 5px;
+            margin-bottom: 3px;
         }
         .data-info .value {
-            font-size: 1.6em;
+            font-size: 1.4em;
             font-weight: bold;
             color: #ffe082;
         }
 
-        /* Gemeinsame Button-Stile */
+        /* Graph-Sektion (bleibt fast wie gehabt, ist selbst ein Widget) */
+        .graph-controls {
+            text-align: center;
+            margin-bottom: 15px;
+        }
+        .graph-button {
+            background-color: #5cb85c;
+            color: white;
+            padding: 8px 15px;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 0.9em;
+            margin: 0 5px;
+            transition: background-color 0.3s ease;
+        }
+        .graph-button:hover, .graph-button.active {
+            background-color: #4CAF50;
+        }
+        canvas {
+            background-color: #2c2c2c;
+            border-radius: 5px;
+            width: 100% !important;
+            height: auto !important;
+        }
+
+        /* Kamera-Sektion (bleibt fast wie gehabt, ist selbst ein Widget) */
+        .camera-section img {
+            display: block;
+            max-width: 100%;
+            height: auto;
+            margin: 15px auto;
+            border: 2px solid #5cb85c;
+            border-radius: 4px;
+        }
         .button-group {
             margin-top: 20px;
             display: flex;
@@ -118,16 +177,18 @@
         }
 
         /* Footer */
-        .footer {
+        footer {
             text-align: center;
-            margin-top: 30px;
             font-size: 0.8em;
             color: #777;
+            padding: 10px;
+            width: 100%;
+            box-sizing: border-box;
         }
 
         /* Responsive Anpassungen */
         @media (max-width: 768px) {
-            .data-section {
+            .widget-grid-container {
                 grid-template-columns: 1fr;
             }
             .container {
@@ -136,18 +197,23 @@
             }
         }
     </style>
-    {% block meta_refresh %}{% endblock %} {# Block für Meta-Refresh #}
+    {% block meta_refresh %}{% endblock %}
 </head>
 <body>
     <div class="container">
         <h1><i class="fas fa-seedling"></i> {% block page_heading %}Grow Box Monitor{% endblock %} <i class="fas fa-leaf"></i></h1>
 
-        {% block content %}{% endblock %} {# Dies ist der Haupt-Inhaltsblock #}
-
+        <div class="widget-grid-container" id="sortable-widgets">
+            {% block content %}{% endblock %}
+        </div>
     </div>
-    <div class="footer">
-        Powered by Raspberry Pi. Letzte Aktualisierung: {{ current_time }}
-    </div>
-    {% block scripts %}{% endblock %} {# Block für JavaScript am Ende des Bodys #}
+    <footer>
+        <div class="footer">
+            {% block footer_content %}
+                Powered by Raspberry Pi. Letzte Aktualisierung: {{ current_time }}
+            {% endblock %}
+        </div>
+    </footer>
+    {% block scripts %}{% endblock %}
 </body>
 </html>

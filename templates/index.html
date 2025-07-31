@@ -1,59 +1,82 @@
-{% extends "base.html" %} {# Sagt Jinja, dass dieses Template base.html erweitert #}
+{% extends "base.html" %}
 
-{% block title %}Grow Box Monitor{% endblock %} {# Spezifischer Titel für diese Seite #}
+{% block title %}Grow Box Monitor{% endblock %}
 
 {% block head_extra %}
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.0/Sortable.min.js"></script>
 {% endblock %}
 
 {% block meta_refresh %}
-    <meta http-equiv="refresh" content="60"> {# Aktualisierung nur auf der Hauptseite #}
+    <meta http-equiv="refresh" content="60">
 {% endblock %}
 
-{% block page_heading %}Grow Box Monitor{% endblock %} {# Kann hier überschrieben werden oder standardmäßig bleiben #}
+{% block page_heading %}Grow Box Monitor{% endblock %}
 
-{% block content %}
-    <div class="data-section">
-        <h2><i class="fas fa-chart-line"></i> Aktuelle Daten</h2>
-        <div class="data-card">
-            <i class="far fa-clock"></i>
-            <div class="data-info">
-                <strong>Aktuelle Zeit:</strong> <span class="value">{{ current_time }}</span>
-            </div>
-        </div>
-        <div class="data-card">
-            <i class="fas fa-thermometer-half"></i>
-            <div class="data-info">
-                <strong>Temperatur:</strong> <span class="value">{{ temperature }} °C</span>
-            </div>
-        </div>
-        <div class="data-card">
-            <i class="fas fa-vial"></i>
-            <div class="data-info">
-                <strong>pH-Wert:</strong> <span class="value">Wird hinzugefügt...</span>
-            </div>
-        </div>
-        <div class="data-card">
-            <i class="fas fa-flask"></i>
-            <div class="data-info">
-                <strong>EC-Wert:</strong> <span class="value">Wird hinzugefügt...</span>
-            </div>
-        </div>
-        <div class="data-card">
-            <i class="fas fa-water"></i>
-            <div class="data-info">
-                <strong>Pumpe 1 (pH+):</strong> <span class="value">Status wird hinzugefügt...</span>
-            </div>
-        </div>
-        <div class="data-card">
-            <i class="fas fa-tint"></i>
-            <div class="data-info">
-                <strong>Pumpe 2 (pH-):</strong> <span class="value">Status wird hinzugefügt...</span>
+{% block content %} {# Dieser Block füllt den widget-grid-container in base.html #}
+
+    {# Aktuelle Zeit Widget #}
+    <div class="widget" id="time-widget">
+        <h2><i class="far fa-clock"></i> Aktuelle Zeit</h2>
+        <div class="data-card-item"> {# Nutzt den Stil der Datenkarten, ist aber jetzt der Hauptinhalt des Widgets #}
+            <div class="data-info" style="text-align: center; width: 100%;"> {# Zentriert den Inhalt #}
+                <span class="value" style="font-size: 2.2em;">{{ current_time }}</span> {# Größer anzeigen #}
             </div>
         </div>
     </div>
 
-    <div class="graph-section">
+    {# Temperatur Widget #}
+    <div class="widget" id="temperature-value-widget">
+        <h2><i class="fas fa-thermometer-half"></i> Temperatur</h2>
+        <div class="data-card-item">
+            <div class="data-info" style="text-align: center; width: 100%;">
+                <span class="value" style="font-size: 2.2em;">{{ temperature }} °C</span>
+            </div>
+        </div>
+    </div>
+
+    {# pH-Wert Widget #}
+    <div class="widget" id="ph-widget">
+        <h2><i class="fas fa-vial"></i> pH-Wert</h2>
+        <div class="data-card-item">
+            <div class="data-info" style="text-align: center; width: 100%;">
+                <span class="value" style="font-size: 2.2em;">Wird hinzugefügt...</span>
+            </div>
+        </div>
+    </div>
+
+    {# EC-Wert Widget #}
+    <div class="widget" id="ec-widget">
+        <h2><i class="fas fa-flask"></i> EC-Wert</h2>
+        <div class="data-card-item">
+            <div class="data-info" style="text-align: center; width: 100%;">
+                <span class="value" style="font-size: 2.2em;">Wird hinzugefügt...</span>
+            </div>
+        </div>
+    </div>
+
+    {# Pumpe 1 (pH+) Widget #}
+    <div class="widget" id="pump1-widget">
+        <h2><i class="fas fa-water"></i> Pumpe 1 (pH+)</h2>
+        <div class="data-card-item">
+            <div class="data-info" style="text-align: center; width: 100%;">
+                <span class="value" style="font-size: 1.8em;">Status wird hinzugefügt...</span>
+            </div>
+        </div>
+    </div>
+
+    {# Pumpe 2 (pH-) Widget #}
+    <div class="widget" id="pump2-widget">
+        <h2><i class="fas fa-tint"></i> Pumpe 2 (pH-)</h2>
+        <div class="data-card-item">
+            <div class="data-info" style="text-align: center; width: 100%;">
+                <span class="value" style="font-size: 1.8em;">Status wird hinzugefügt...</span>
+            </div>
+        </div>
+    </div>
+
+    {# Temperaturverlauf Widget #}
+    <div class="widget" id="graph-widget">
         <h2><i class="fas fa-chart-area"></i> Temperaturverlauf</h2>
         <div class="graph-controls">
             <button class="graph-button active" data-hours="1">Letzte Stunde</button>
@@ -64,7 +87,8 @@
         <canvas id="temperatureChart"></canvas>
     </div>
 
-    <div class="camera-section">
+    {# Kamera-Widget #}
+    <div class="widget" id="camera-widget">
         <h2><i class="fas fa-video"></i> Live-Ansicht der Box</h2>
         <img src="{{ mjpg_stream_url }}" alt="Live Camera Stream">
         <div class="button-group">
@@ -198,6 +222,41 @@
             const defaultHours = document.querySelector('.graph-button.active').dataset.hours;
             const data = await fetchTemperatureData(defaultHours);
             createOrUpdateChart(data);
+
+            // --- Sortable.js für Drag-and-Drop ---
+            const sortableContainer = document.getElementById('sortable-widgets');
+            if (sortableContainer) {
+                new Sortable(sortableContainer, {
+                    animation: 150,
+                    handle: 'h2', // Überschrift als Ziehgriff verwenden
+                    ghostClass: 'sortable-ghost',
+                    onEnd: function (evt) {
+                        const order = Array.from(sortableContainer.children).map(item => item.id);
+                        localStorage.setItem('widgetOrder', JSON.stringify(order));
+                        console.log('Widget order saved:', order);
+                    }
+                });
+
+                // Reihenfolge beim Laden der Seite wiederherstellen
+                const savedOrder = JSON.parse(localStorage.getItem('widgetOrder'));
+                if (savedOrder) {
+                    const currentWidgetIds = Array.from(sortableContainer.children).map(item => item.id);
+                    let validOrder = savedOrder.filter(id => currentWidgetIds.includes(id));
+
+                    currentWidgetIds.forEach(id => {
+                        if (!validOrder.includes(id)) {
+                            validOrder.push(id);
+                        }
+                    });
+
+                    validOrder.forEach(id => {
+                        const element = document.getElementById(id);
+                        if (element) {
+                            sortableContainer.appendChild(element);
+                        }
+                    });
+                }
+            }
         });
     </script>
 {% endblock %}

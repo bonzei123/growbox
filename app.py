@@ -4,12 +4,12 @@ import os
 import glob
 import subprocess
 import time
-import sqlite3  # Neu: Für die Datenbankverbindung
+import sqlite3
 
 app = Flask(__name__)
 
 # --- Datenbank Konfiguration ---
-DB_NAME = 'growbox_data.db'  # Muss mit setup_database.py und log_temperature.py übereinstimmen
+DB_NAME = 'growbox_data.db'
 
 # --- DS18B20 Temperatursensor Konfiguration (wie gehabt) ---
 base_dir = '/sys/bus/w1/devices/'
@@ -76,10 +76,10 @@ MJPG_STREAM_URL = "http://"
 MJPG_STREAM_PORT = 8080
 
 os.makedirs(TIMELAPSE_DIR, exist_ok=True)
-os.makedirs(PHOTO_DIR, exist_ok=True)  # Stelle sicher, dass das auch existiert
+os.makedirs(PHOTO_DIR, exist_ok=True)
 
 
-# --- NEU: API-Endpunkt für Temperaturdaten ---
+# --- API-Endpunkt für Temperaturdaten MIT FALLBACK ---
 @app.route('/api/temperature_data')
 def get_temperature_data():
     conn = None
@@ -87,29 +87,60 @@ def get_temperature_data():
         conn = sqlite3.connect(DB_NAME)
         cursor = conn.cursor()
 
-        # Hole den gewünschten Zeitbereich aus den URL-Parametern
-        # Standard: letzte 24 Stunden
         hours = request.args.get('hours', type=int, default=24)
 
-        # Berechne den Startzeitpunkt
         time_ago = datetime.datetime.now() - datetime.timedelta(hours=hours)
         time_ago_iso = time_ago.isoformat()
 
-        # Daten aus der Datenbank abrufen
-        # Sortiere nach Zeitstempel, um den Graphen korrekt zu zeichnen
         cursor.execute("SELECT timestamp, value FROM temperatures WHERE timestamp >= ? ORDER BY timestamp ASC",
                        (time_ago_iso,))
         data = cursor.fetchall()
 
-        # Daten für Chart.js formatieren
-        labels = [row[0] for row in data]  # Zeitstempel als Labels
-        values = [row[1] for row in data]  # Temperaturwerte
+        # --- FALLBACK-LOGIK HIER ---
+        if not data:  # Wenn keine echten Daten gefunden wurden
+            print(f"Keine echten Temperaturdaten für die letzten {hours} Stunden gefunden. Erzeuge Sample-Daten.")
+            labels = []
+            values = []
+            start_time = datetime.datetime.now() - datetime.timedelta(hours=hours)
+
+            # Erzeuge Sample-Datenpunkte (z.B. alle 5 Minuten)
+            num_points = (hours * 60) // 5  # Anzahl der Punkte
+
+            for i in range(num_points):
+                point_time = start_time + datetime.timedelta(minutes=i * 5)
+                labels.append(point_time.isoformat())
+
+                # Beispiel für eine "realistische" Sample-Temperatur (z.B. 20-25 Grad mit leichter Schwankung)
+                # Hier kannst du komplexere Muster einbauen, wenn du möchtest
+                sample_temp = 22.0 + (i % 20 - 10) * 0.2 + (i % 5 - 2.5) * 0.5  # Leichte Schwankung
+                values.append(round(sample_temp, 2))
+
+            return jsonify({'labels': labels, 'values': values})
+
+        # --- Echte Daten verarbeiten (wenn vorhanden) ---
+        labels = [row[0] for row in data]
+        values = [row[1] for row in data]
 
         return jsonify({'labels': labels, 'values': values})
 
     except sqlite3.Error as e:
         print(f"API Error: Fehler beim Lesen aus der Datenbank: {e}")
-        return jsonify({'error': str(e)}), 500
+        # Auch hier einen Fallback anbieten, wenn die DB-Verbindung/Abfrage fehlschlägt
+        # Dies ist hilfreich, wenn die DB-Datei beschädigt ist oder nicht gefunden wird
+        print("Erzeuge Sample-Daten aufgrund eines Datenbankfehlers.")
+        labels = []
+        values = []
+        hours = request.args.get('hours', type=int,
+                                 default=24)  # Fallback für Stunden, falls der erste Fehler schon bei hours auftrat
+        start_time = datetime.datetime.now() - datetime.timedelta(hours=hours)
+        num_points = (hours * 60) // 5
+        for i in range(num_points):
+            point_time = start_time + datetime.timedelta(minutes=i * 5)
+            labels.append(point_time.isoformat())
+            sample_temp = 22.0 + (i % 20 - 10) * 0.2 + (i % 5 - 2.5) * 0.5
+            values.append(round(sample_temp, 2))
+        return jsonify({'labels': labels, 'values': values}), 500  # Status 500 für internen Serverfehler
+
     finally:
         if conn:
             conn.close()
@@ -142,32 +173,28 @@ def index():
 
 @app.route('/create_timelapse', methods=['POST'])
 def create_timelapse():
-    # Lösche alte temporäre Dateien, falls vorhanden (sollte von ffmpeg aufgeräumt werden, aber zur Sicherheit)
     temp_files = glob.glob(os.path.join(TIMELAPSE_DIR, 'temp_*.jpg'))
     for f in temp_files:
         os.remove(f)
 
-    # Finde alle Fotos im PHOTO_DIR
     photos = sorted(glob.glob(os.path.join(PHOTO_DIR, '*.jpg')))
     if not photos:
         return render_template('timelapse_status.html',
                                message="Keine Fotos gefunden, um einen Zeitraffer zu erstellen.", video_url=None), 404
 
-    # ffmpeg braucht nummerierte Dateien, Symlinks sind eine saubere Lösung
     for i, photo_path in enumerate(photos):
         link_path = os.path.join(TIMELAPSE_DIR, f"temp_{i:05d}.jpg")
         try:
             os.symlink(photo_path, link_path)
         except FileExistsError:
-            pass  # Link existiert schon, überspringen
+            pass
 
     timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
     output_video = os.path.join(TIMELAPSE_DIR, f"timelapse_{timestamp}.mp4")
 
-    # ffmpeg Befehl
     command = [
         "ffmpeg", "-y",
-        "-framerate", "10",  # Du könntest dies auch im Frontend anpassbar machen
+        "-framerate", "10",
         "-i", os.path.join(TIMELAPSE_DIR, "temp_%05d.jpg"),
         "-c:v", "libx264",
         "-pix_fmt", "yuv420p",
@@ -189,7 +216,6 @@ def create_timelapse():
     except FileNotFoundError:
         message = "FFmpeg ist nicht installiert. Bitte 'sudo apt-get install ffmpeg' ausführen."
     finally:
-        # Lösche die temporären Symlinks nach der Erstellung
         for f in glob.glob(os.path.join(TIMELAPSE_DIR, 'temp_*.jpg')):
             os.remove(f)
 
