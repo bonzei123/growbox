@@ -6,12 +6,11 @@ import subprocess
 import time
 import sqlite3
 import threading
-import shutil
 
 app = Flask(__name__)
 
 # --- Datenbank Konfiguration ---
-DB_NAME = '/home/pi/growbox_monitor/growbox_data.db'
+DB_NAME = '/home/pi/growbox_monitor/growbox_data.db' # Absoluter Pfad
 
 # --- DS18B20 Temperatursensor Konfiguration (wie gehabt) ---
 base_dir = '/sys/bus/w1/devices/'
@@ -71,7 +70,6 @@ def read_temp():
 # --- Kamera- und Zeitraffer-Konfiguration ---
 PHOTO_DIR = "/home/pi/growbox_photos"
 TIMELAPSE_DIR = "/home/pi/growbox_timelapses"
-
 os.makedirs(TIMELAPSE_DIR, exist_ok=True)
 os.makedirs(PHOTO_DIR, exist_ok=True)
 
@@ -82,7 +80,38 @@ RPICAM_STILL_PATH = "/usr/bin/rpicam-still"
 # Pfad für das neueste Foto, das der Webserver anzeigt
 LATEST_PHOTO_PATH = os.path.join(PHOTO_DIR, 'latest_photo.jpg')
 
-# --- NEU: Route für das neueste Foto ---
+# --- NEU: Routen für die Kamera-API (Status und Steuerung) ---
+@app.route('/api/camera_status')
+def camera_status():
+    try:
+        status_result = subprocess.run(['sudo', 'systemctl', 'is-active', 'camera-daemon.service'],
+                                       capture_output=True, text=True, check=False)
+        status = status_result.stdout.strip()
+        if status == 'active':
+            return jsonify({'status': 'active', 'message': 'Aktiv'})
+        else:
+            return jsonify({'status': 'inactive', 'message': 'Deaktiviert'})
+    except Exception as e:
+        return jsonify({'status': 'error', 'message': f'Fehler: {str(e)}'}), 500
+
+@app.route('/api/camera_control/<action>', methods=['POST'])
+def camera_control(action):
+    if action not in ['start', 'stop']:
+        return jsonify({'error': 'Invalid action'}), 400
+
+    try:
+        if action == 'start':
+            subprocess.run(['sudo', 'systemctl', 'start', 'camera-daemon.service'], check=True)
+            return jsonify({'status': 'success', 'message': 'Dienst gestartet'})
+        elif action == 'stop':
+            subprocess.run(['sudo', 'systemctl', 'stop', 'camera-daemon.service'], check=True)
+            return jsonify({'status': 'success', 'message': 'Dienst gestoppt'})
+    except subprocess.CalledProcessError as e:
+        return jsonify({'status': 'error', 'message': f"Fehler bei der Steuerung: {e.stderr}"}), 500
+    except Exception as e:
+        return jsonify({'status': 'error', 'message': f"Allgemeiner Fehler: {str(e)}"}), 500
+
+# --- NEU: Route für das neueste Foto (wird vom Daemon erstellt) ---
 @app.route('/latest_photo')
 def latest_photo():
     if os.path.exists(LATEST_PHOTO_PATH):

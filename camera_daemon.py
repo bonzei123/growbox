@@ -4,7 +4,7 @@ import subprocess
 import threading
 import datetime
 import shutil
-from PIL import Image, ImageDraw, ImageFont # Neu: Die Pillow-Bibliothek importieren
+from PIL import Image, ImageDraw, ImageFont
 
 # --- Kamera- und Zeitraffer-Konfiguration ---
 PHOTO_DIR = "/home/pi/growbox_photos"
@@ -16,7 +16,7 @@ RPICAM_STILL_PATH = "/usr/bin/rpicam-still"
 # Pfad für das neueste Foto, das der Webserver anzeigt
 LATEST_PHOTO_PATH = os.path.join(PHOTO_DIR, 'latest_photo.jpg')
 
-# NEU: Funktion zum kontinuierlichen Aufnehmen von Fotos
+# Funktion zum kontinuierlichen Aufnehmen von Fotos
 def capture_photo_loop():
     
     print(f"Starte Fotoaufnahme-Loop mit {RPICAM_STILL_PATH}. Foto alle 60 Sekunden.")
@@ -28,6 +28,9 @@ def capture_photo_loop():
             timestamp_str = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
             temp_filename = f"{PHOTO_DIR}/growbox_photo_temp_{timestamp_str}.jpg"
             final_filename = f"{PHOTO_DIR}/growbox_photo_{timestamp_str}_1920x1080.jpg"
+            
+            # NEU: Zeitstempel-Text für das Overlay-Format
+            overlay_text = datetime.datetime.now().strftime("%d-%m-%Y %H:%M:%S")
             
             cmd_capture = [
                 RPICAM_STILL_PATH, "--nopreview", "-t", "1",
@@ -46,9 +49,6 @@ def capture_photo_loop():
                             image = Image.open(temp_filename)
                             draw = ImageDraw.Draw(image)
                             font = ImageFont.truetype("DejaVuSans-Bold.ttf", 40) # Standard-Schriftart auf Raspberry Pi OS
-                            
-                            # Text-Overlay für Datum und Uhrzeit
-                            overlay_text = datetime.datetime.now().strftime("%d-%m-%Y %H:%M:%S")
                             
                             # NEU: Verwende textbbox anstelle von textsize
                             bbox = draw.textbbox((0, 0), overlay_text, font=font)
