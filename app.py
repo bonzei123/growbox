@@ -1,20 +1,17 @@
-from flask import Flask, render_template, request, redirect, url_for, send_from_directory, jsonify, Response
+from flask import Flask, render_template, request, jsonify, Response, send_from_directory, url_for
 import datetime
 import os
 import glob
 import subprocess
 import time
 import sqlite3
-from picamera2 import Picamera2, MappedArray # Neu: Picamera2 Import
-import cv2 # Neu: OpenCV für JPEG-Komprimierung
-import numpy as np # Neu: Für Bildbearbeitung
-import threading # Neu: Für Hintergrund-Kamera-Thread
-import io # Neu: Für In-Memory-Bildverarbeitung
+import threading
+import shutil
 
 app = Flask(__name__)
 
 # --- Datenbank Konfiguration ---
-DB_NAME = 'growbox_data.db'
+DB_NAME = '/home/pi/growbox_monitor/growbox_data.db'
 
 # --- DS18B20 Temperatursensor Konfiguration (wie gehabt) ---
 base_dir = '/sys/bus/w1/devices/'
@@ -28,16 +25,13 @@ def find_ds18b20():
             global device_folder, device_file
             device_folder = os.path.join(base_dir, folders[0])
             device_file = os.path.join(device_folder, 'w1_slave')
-            print(f"DS18B20 sensor found at: {device_folder}")
             return True
         else:
             print("No DS18B20 sensor found.")
             return False
     except FileNotFoundError:
-        print("1-Wire directory not found. Is 1-Wire enabled?")
         return False
     except Exception as e:
-        print(f"Error finding DS18B20: {e}")
         return False
 
 def read_temp_raw():
@@ -49,7 +43,6 @@ def read_temp_raw():
             lines = f.readlines()
         return lines
     except Exception as e:
-        print(f"Error reading raw temp: {e}")
         return None
 
 def read_temp():
@@ -70,6 +63,11 @@ def read_temp():
         return round(temp_c, 2)
     return "N/A"
 
+# --- ADS1115 direkt initialisieren (bleibt auskommentiert) ---
+# ads = ADS.ADS1115(I2C_BUS)
+# chan_ph = AnalogIn(ads, ADS.P0)
+# chan_ec = AnalogIn(ads, ADS.A1)
+
 # --- Kamera- und Zeitraffer-Konfiguration ---
 PHOTO_DIR = "/home/pi/growbox_photos"
 TIMELAPSE_DIR = "/home/pi/growbox_timelapses"
@@ -77,74 +75,20 @@ TIMELAPSE_DIR = "/home/pi/growbox_timelapses"
 os.makedirs(TIMELAPSE_DIR, exist_ok=True)
 os.makedirs(PHOTO_DIR, exist_ok=True)
 
-# --- NEU: Picamera2 Globales Objekt und Lock ---
-picam2_stream = None
-output_frame = None
-lock = threading.Lock() # Lock für den Zugriff auf den Frame-Puffer
+# WICHTIG: Pfade anpassen
+FFMPEG_PATH = "/usr/bin/ffmpeg"
+RPICAM_STILL_PATH = "/usr/bin/rpicam-still"
 
-# Funktion zum Starten des Kamera-Threads
-def start_camera_stream():
-    global picam2_stream, output_frame
-    picam2_stream = Picamera2()
-    # Konfiguriere den Stream für eine Vorschau (LORES für weniger Ressourcen)
-    # Beachte: Die Kamera kann gleichzeitig einen Preview-Stream und einen Still-Stream haben.
-    # Der Preview-Stream ist für den MJPEG-Stream.
-    camera_config = picam2_stream.create_video_configuration(lores={"size": (640, 480)}, display="lores")
-    picam2_stream.configure(camera_config)
-    
-    # Startet den internen Stream der Kamera
-    picam2_stream.start()
-    print("Picamera2 Stream gestartet.")
+# Pfad für das neueste Foto, das der Webserver anzeigt
+LATEST_PHOTO_PATH = os.path.join(PHOTO_DIR, 'latest_photo.jpg')
 
-    try:
-        while True:
-            # Nehmen den Frame aus dem lores Stream
-            buffer = picam2_stream.capture_array("lores")
-            
-            # Konvertiere das Bild (normalerweise RGB/BGR von Picamera2 ist np.array)
-            # und komprimiere es zu JPEG
-            ret, jpeg = cv2.imencode('.jpg', buffer)
-            if not ret:
-                continue
-            
-            with lock:
-                output_frame = jpeg.tobytes() # Speichere den JPEG-Frame als Bytes
-            
-            time.sleep(0.05) # Begrenze die Framerate, z.B. 20 FPS (1/20 = 0.05)
-    except Exception as e:
-        print(f"Fehler im Kamera-Stream-Thread: {e}")
-    finally:
-        if picam2_stream:
-            picam2_stream.stop()
-            picam2_stream.release()
-            print("Picamera2 Stream beendet.")
-
-# Starte den Kamera-Stream in einem separaten Thread beim App-Start
-camera_thread = threading.Thread(target=start_camera_stream)
-camera_thread.daemon = True # Lässt den Thread sterben, wenn die Hauptanwendung stirbt
-camera_thread.start()
-
-
-# NEU: Route für den MJPEG-Stream
-@app.route('/video_feed')
-def video_feed():
-    def generate():
-        global output_frame, lock
-        while True:
-            with lock:
-                if output_frame is not None:
-                    frame = output_frame
-                else:
-                    frame = None
-            
-            if frame is not None:
-                yield (b'--frame\r\n'
-                       b'Content-Type: image/jpeg\r\n\r\n' + frame + b'\r\n')
-            time.sleep(0.05) # Auch hier die Framerate begrenzen
-
-    return Response(generate(),
-                    mimetype='multipart/x-mixed-replace; boundary=frame')
-
+# --- NEU: Route für das neueste Foto ---
+@app.route('/latest_photo')
+def latest_photo():
+    if os.path.exists(LATEST_PHOTO_PATH):
+        return send_from_directory(PHOTO_DIR, 'latest_photo.jpg', mimetype='image/jpeg')
+    else:
+        return "No image available", 503
 
 # --- API-Endpunkt für Temperaturdaten MIT FALLBACK (wie gehabt) ---
 @app.route('/api/temperature_data')
@@ -153,40 +97,26 @@ def get_temperature_data():
     try:
         conn = sqlite3.connect(DB_NAME)
         cursor = conn.cursor()
-
         hours = request.args.get('hours', type=int, default=24)
-        
         time_ago = datetime.datetime.now() - datetime.timedelta(hours=hours)
         time_ago_iso = time_ago.isoformat()
-
         cursor.execute("SELECT timestamp, value FROM temperatures WHERE timestamp >= ? ORDER BY timestamp ASC", (time_ago_iso,))
         data = cursor.fetchall()
-
         if not data:
-            print(f"Keine echten Temperaturdaten für die letzten {hours} Stunden gefunden. Erzeuge Sample-Daten.")
             labels = []
             values = []
             start_time = datetime.datetime.now() - datetime.timedelta(hours=hours)
-            
             num_points = (hours * 60) // 5
-            
             for i in range(num_points):
                 point_time = start_time + datetime.timedelta(minutes=i * 5)
                 labels.append(point_time.isoformat())
-                
                 sample_temp = 22.0 + (i % 20 - 10) * 0.2 + (i % 5 - 2.5) * 0.5
                 values.append(round(sample_temp, 2))
-                
             return jsonify({'labels': labels, 'values': values})
-
         labels = [row[0] for row in data]
         values = [row[1] for row in data]
-
         return jsonify({'labels': labels, 'values': values})
-
     except sqlite3.Error as e:
-        print(f"API Error: Fehler beim Lesen aus der Datenbank: {e}")
-        print("Erzeuge Sample-Daten aufgrund eines Datenbankfehlers.")
         labels = []
         values = []
         hours = request.args.get('hours', type=int, default=24)
@@ -198,87 +128,79 @@ def get_temperature_data():
             sample_temp = 22.0 + (i % 20 - 10) * 0.2 + (i % 5 - 2.5) * 0.5
             values.append(round(sample_temp, 2))
         return jsonify({'labels': labels, 'values': values}), 500
-
     finally:
         if conn:
             conn.close()
 
-# --- Webserver Routen (index, create_timelapse, list_timelapses, download_timelapse) wie gehabt ---
+# --- Webserver Routen (index, create_timelapse, list_timelapses, download_timelapse) ---
 @app.route('/')
 def index():
-    # MJPG_STREAM_URL ist jetzt lokal und zeigt auf unsere Flask-Route
-    stream_url = url_for('video_feed')
-    
-    current_time = datetime.datetime.now().strftime("%H:%M:%S")
+    stream_url = url_for('latest_photo')
+    current_datetime = datetime.datetime.now()
+    current_time = current_datetime.strftime("%H:%M:%S")
+    current_date = current_datetime.strftime("%d.%m.%Y")
     temperature_c = read_temp()
-
     return render_template('index.html',
                            current_time=current_time,
+                           current_date=current_date,
                            temperature=temperature_c,
-                           mjpg_stream_url=stream_url) # Hier url_for verwenden
+                           mjpg_stream_url=stream_url)
 
 @app.route('/create_timelapse', methods=['POST'])
 def create_timelapse():
-    # Lösche alte temporäre Dateien, falls vorhanden (sollte von ffmpeg aufgeräumt werden, aber zur Sicherheit)
+    os.makedirs(PHOTO_DIR, exist_ok=True)
+    os.makedirs(TIMELAPSE_DIR, exist_ok=True)
     temp_files = glob.glob(os.path.join(TIMELAPSE_DIR, 'temp_*.jpg'))
     for f in temp_files:
         os.remove(f)
-
     photos = sorted(glob.glob(os.path.join(PHOTO_DIR, '*.jpg')))
     if not photos:
-        return render_template('timelapse_status.html', message="Keine Fotos gefunden, um einen Zeitraffer zu erstellen.", video_url=None), 404
-
-    # ffmpeg braucht nummerierte Dateien, Symlinks sind eine saubere Lösung
+        return render_template('timelapse_status.html', message="No photos found to create a timelapse.", video_url=None), 404
     for i, photo_path in enumerate(photos):
-        link_path = os.path.join(TIMELAPSE_DIR, f"temp_{i:05d}.jpg")
+        link_path = os.path.join(TIMELAPSE_DIR, f"temp_%05d.jpg")
         try:
             os.symlink(photo_path, link_path)
-        except FileExistsError: # Falls symlink schon existiert, überspringen
+        except FileExistsError:
             pass
-
     timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
     output_video = os.path.join(TIMELAPSE_DIR, f"timelapse_{timestamp}.mp4")
-
-    # ffmpeg Befehl
     command = [
-        "ffmpeg", "-y",
-        "-framerate", "10", # Du könntest dies auch im Frontend anpassbar machen
+        FFMPEG_PATH, "-y",
+        "-framerate", "10",
         "-i", os.path.join(TIMELAPSE_DIR, "temp_%05d.jpg"),
         "-c:v", "libx264",
         "-pix_fmt", "yuv420p",
         "-crf", "23",
         output_video
     ]
-    print(f"Starte ffmpeg: {' '.join(command)}")
-
+    print(f"Starting ffmpeg: {' '.join(command)}")
     try:
         result = subprocess.run(command, capture_output=True, text=True, check=True)
-        print(f"ffmpeg stdout: {result.stdout}")
-        print(f"ffmpeg stderr: {result.stderr}")
-        message = f"Zeitraffer '{os.path.basename(output_video)}' erfolgreich erstellt!"
+        message = f"Timelapse '{os.path.basename(output_video)}' created successfully!"
     except subprocess.CalledProcessError as e:
-        print(f"Fehler beim Erstellen des Zeitraffers: {e}")
-        print(f"ffmpeg stdout: {e.stdout}")
-        print(f"ffmpeg stderr: {e.stderr}")
-        message = f"Fehler beim Erstellen des Zeitraffers: {e.stderr}"
+        message = f"Error creating timelapse: {e.stderr}"
     except FileNotFoundError:
-        message = "FFmpeg ist nicht installiert. Bitte 'sudo apt-get install ffmpeg' ausführen."
+        message = "FFmpeg is not installed. Please run 'sudo apt-get install ffmpeg'."
     finally:
-        # Lösche die temporären Symlinks nach der Erstellung
         for f in glob.glob(os.path.join(TIMELAPSE_DIR, 'temp_*.jpg')):
             os.remove(f)
-
     return render_template('timelapse_status.html', message=message, video_url=os.path.basename(output_video))
 
 @app.route('/timelapses')
 def list_timelapses():
+    os.makedirs(TIMELAPSE_DIR, exist_ok=True)
     timelapses = sorted(os.listdir(TIMELAPSE_DIR), reverse=True)
     return render_template('timelapse_list.html', timelapses=timelapses)
 
 @app.route('/timelapses/<filename>')
 def download_timelapse(filename):
+    os.makedirs(TIMELAPSE_DIR, exist_ok=True)
     return send_from_directory(TIMELAPSE_DIR, filename, as_attachment=True)
 
+@app.route('/favicon.ico')
+def favicon():
+    return send_from_directory(os.path.join(app.root_path, 'static'),
+                               'favicon.ico', mimetype='image/vnd.microsoft.icon')
 
 if __name__ == '__main__':
     find_ds18b20()

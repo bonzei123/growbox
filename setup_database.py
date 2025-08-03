@@ -1,7 +1,7 @@
 import sqlite3
 import os
 
-DB_NAME = 'growbox_data.db' # Name deiner Datenbankdatei
+DB_NAME = '/home/pi/growbox_monitor/growbox_data.db' # Name deiner Datenbankdatei
 
 def setup_database():
     conn = None

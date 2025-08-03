@@ -4,6 +4,8 @@
 
 {% block head_extra %}
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/luxon@3.4.4/build/global/luxon.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-luxon@1.3.1/dist/chartjs-adapter-luxon.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.0/Sortable.min.js"></script>
 {% endblock %}
 
@@ -13,69 +15,49 @@
 
 {% block page_heading %}Grow Box Monitor{% endblock %}
 
-{% block content %} {# Dieser Block füllt den widget-grid-container in base.html #}
-
-    {# Aktuelle Zeit Widget #}
-    <div class="widget" id="time-widget">
-        <h2><i class="far fa-clock"></i> Aktuelle Zeit</h2>
-        <div class="data-card-item"> {# Nutzt den Stil der Datenkarten, ist aber jetzt der Hauptinhalt des Widgets #}
-            <div class="data-info" style="text-align: center; width: 100%;"> {# Zentriert den Inhalt #}
-                <span class="value" style="font-size: 2.2em;">{{ current_time }}</span> {# Größer anzeigen #}
+{% block content %}
+    <div class="widget" id="data-widget">
+        <h2><i class="fas fa-chart-line"></i> Aktuelle Daten</h2>
+        <div class="data-section-grid">
+            <div class="data-card-item">
+                <i class="fas fa-thermometer-half"></i>
+                <div class="data-info">
+                    <strong>Temperatur:</strong> <span class="value">{{ temperature }} °C</span>
+                </div>
+            </div>
+            <div class="data-card-item">
+                <i class="fas fa-vial"></i>
+                <div class="data-info">
+                    <strong>pH-Wert:</strong> <span class="value">Wird hinzugefügt...</span>
+                </div>
+            </div>
+            <div class="data-card-item">
+                <i class="fas fa-flask"></i>
+                <div class="data-info">
+                    <strong>EC-Wert:</strong> <span class="value">Wird hinzugefügt...</span>
+                </div>
             </div>
         </div>
     </div>
 
-    {# Temperatur Widget #}
-    <div class="widget" id="temperature-value-widget">
-        <h2><i class="fas fa-thermometer-half"></i> Temperatur</h2>
-        <div class="data-card-item">
-            <div class="data-info" style="text-align: center; width: 100%;">
-                <span class="value" style="font-size: 2.2em;">{{ temperature }} °C</span>
+    <div class="widget" id="pumps-widget">
+        <h2><i class="fas fa-pump"></i> Pumpensteuerung</h2>
+        <div class="data-section-grid">
+            <div class="data-card-item">
+                <i class="fas fa-water"></i>
+                <div class="data-info">
+                    <strong>Pumpe 1 (pH+):</strong> <span class="value">Status wird hinzugefügt...</span>
+                </div>
+            </div>
+            <div class="data-card-item">
+                <i class="fas fa-tint"></i>
+                <div class="data-info">
+                    <strong>Pumpe 2 (pH-):</strong> <span class="value">Status wird hinzugefügt...</span>
+                </div>
             </div>
         </div>
     </div>
 
-    {# pH-Wert Widget #}
-    <div class="widget" id="ph-widget">
-        <h2><i class="fas fa-vial"></i> pH-Wert</h2>
-        <div class="data-card-item">
-            <div class="data-info" style="text-align: center; width: 100%;">
-                <span class="value" style="font-size: 2.2em;">Wird hinzugefügt...</span>
-            </div>
-        </div>
-    </div>
-
-    {# EC-Wert Widget #}
-    <div class="widget" id="ec-widget">
-        <h2><i class="fas fa-flask"></i> EC-Wert</h2>
-        <div class="data-card-item">
-            <div class="data-info" style="text-align: center; width: 100%;">
-                <span class="value" style="font-size: 2.2em;">Wird hinzugefügt...</span>
-            </div>
-        </div>
-    </div>
-
-    {# Pumpe 1 (pH+) Widget #}
-    <div class="widget" id="pump1-widget">
-        <h2><i class="fas fa-water"></i> Pumpe 1 (pH+)</h2>
-        <div class="data-card-item">
-            <div class="data-info" style="text-align: center; width: 100%;">
-                <span class="value" style="font-size: 1.8em;">Status wird hinzugefügt...</span>
-            </div>
-        </div>
-    </div>
-
-    {# Pumpe 2 (pH-) Widget #}
-    <div class="widget" id="pump2-widget">
-        <h2><i class="fas fa-tint"></i> Pumpe 2 (pH-)</h2>
-        <div class="data-card-item">
-            <div class="data-info" style="text-align: center; width: 100%;">
-                <span class="value" style="font-size: 1.8em;">Status wird hinzugefügt...</span>
-            </div>
-        </div>
-    </div>
-
-    {# Temperaturverlauf Widget #}
     <div class="widget" id="graph-widget">
         <h2><i class="fas fa-chart-area"></i> Temperaturverlauf</h2>
         <div class="graph-controls">
@@ -87,22 +69,20 @@
         <canvas id="temperatureChart"></canvas>
     </div>
 
-    {# Kamera-Widget #}
-    <div class="widget" id="camera-widget">
-        <h2><i class="fas fa-video"></i> Live-Ansicht der Box</h2>
-        <img src="{{ url_for('video_feed') }}" alt="Live Camera Stream">
+    <div class="camera-section widget" id="camera-widget">
+        <h2><i class="fas fa-camera"></i> Live-Ansicht der Box</h2>
+        <img src="{{ url_for('latest_photo') }}?_t={{ current_time }}" alt="Aktuelles Foto der Growbox">
         <div class="button-group">
-            <form action="/create_timelapse" method="post">
+            <form action="{{ url_for('create_timelapse') }}" method="post">
                 <button type="submit" class="button button-secondary"><i class="fas fa-hourglass-half"></i> Zeitraffer erstellen</button>
             </form>
-            <a href="/timelapses" class="button"><i class="fas fa-images"></i> Gespeicherte Zeitraffer</a>
+            <a href="{{ url_for('list_timelapses') }}" class="button"><i class="fas fa-images"></i> Gespeicherte Zeitraffer</a>
         </div>
     </div>
 {% endblock %}
 
 {% block scripts %}
     <script>
-        // --- Chart.js Graph für Temperatur ---
         let temperatureChart;
 
         async function fetchTemperatureData(hours) {
@@ -113,7 +93,6 @@
 
         function createOrUpdateChart(data) {
             const ctx = document.getElementById('temperatureChart').getContext('2d');
-
             const labels = data.labels.map(ts => {
                 const date = new Date(ts);
                 if (data.labels.length > 100) {
@@ -124,7 +103,6 @@
                 return date.toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
             });
             const values = data.values;
-
             if (temperatureChart) {
                 temperatureChart.data.labels = labels;
                 temperatureChart.data.datasets[0].data = values;
@@ -141,7 +119,11 @@
                             backgroundColor: 'rgba(139, 195, 74, 0.2)',
                             tension: 0.3,
                             pointRadius: 0,
-                            borderWidth: 2
+                            pointHoverRadius: 5,
+                            pointBackgroundColor: '#ffe082',
+                            pointBorderColor: '#fff',
+                            pointBorderWidth: 2,
+                            fill: true
                         }]
                     },
                     options: {
@@ -183,9 +165,12 @@
                                 }
                             },
                             tooltip: {
+                                mode: 'index',
+                                intersect: false,
                                 callbacks: {
                                     title: function(context) {
-                                        const date = new Date(context[0].label);
+                                        const originalTimestamp = data.labels[context[0].dataIndex];
+                                        const date = new Date(originalTimestamp);
                                         return date.toLocaleString('de-DE', {
                                             year: 'numeric', month: '2-digit', day: '2-digit',
                                             hour: '2-digit', minute: '2-digit', second: '2-digit'
@@ -201,6 +186,10 @@
                                     }
                                 }
                             }
+                        },
+                        hover: {
+                            mode: 'nearest',
+                            intersect: false
                         }
                     }
                 });
@@ -211,7 +200,6 @@
             button.addEventListener('click', async () => {
                 document.querySelectorAll('.graph-button').forEach(btn => btn.classList.remove('active'));
                 button.classList.add('active');
-
                 const hours = button.dataset.hours;
                 const data = await fetchTemperatureData(hours);
                 createOrUpdateChart(data);
@@ -222,13 +210,12 @@
             const defaultHours = document.querySelector('.graph-button.active').dataset.hours;
             const data = await fetchTemperatureData(defaultHours);
             createOrUpdateChart(data);
-
-            // --- Sortable.js für Drag-and-Drop ---
+            
             const sortableContainer = document.getElementById('sortable-widgets');
             if (sortableContainer) {
                 new Sortable(sortableContainer, {
                     animation: 150,
-                    handle: 'h2', // Überschrift als Ziehgriff verwenden
+                    handle: 'h2',
                     ghostClass: 'sortable-ghost',
                     onEnd: function (evt) {
                         const order = Array.from(sortableContainer.children).map(item => item.id);
@@ -237,18 +224,15 @@
                     }
                 });
 
-                // Reihenfolge beim Laden der Seite wiederherstellen
                 const savedOrder = JSON.parse(localStorage.getItem('widgetOrder'));
                 if (savedOrder) {
                     const currentWidgetIds = Array.from(sortableContainer.children).map(item => item.id);
                     let validOrder = savedOrder.filter(id => currentWidgetIds.includes(id));
-
                     currentWidgetIds.forEach(id => {
                         if (!validOrder.includes(id)) {
                             validOrder.push(id);
                         }
                     });
-
                     validOrder.forEach(id => {
                         const element = document.getElementById(id);
                         if (element) {
@@ -258,5 +242,14 @@
                 }
             }
         });
+        
+        // Simuliert einen Livestream, indem das Bild alle 30 Sekunden neu geladen wird
+        setInterval(() => {
+            const img = document.querySelector('.camera-section img');
+            if (img) {
+                const src = img.src.split('?')[0];
+                img.src = src + '?' + new Date().getTime(); // Fügt einen Timestamp hinzu, um den Browser-Cache zu umgehen
+            }
+        }, 30000); // 30000ms = 30 Sekunden
     </script>
 {% endblock %}

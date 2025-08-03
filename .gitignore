@@ -1,1 +1,4 @@
 .idea/
+growbox_data.db
+log_temperature.log
+venv/
