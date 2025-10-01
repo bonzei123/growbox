@@ -1,39 +1,82 @@
-from flask import Flask, render_template, request, jsonify, Response, send_from_directory, url_for
+from flask import Flask, render_template, request, jsonify, send_from_directory, Response
 import datetime
 import os
 import glob
 import subprocess
 import time
 import sqlite3
-import threading
+import requests
 
 app = Flask(__name__)
 
-# --- Datenbank Konfiguration ---
-DB_NAME = '/home/pi/growbox_monitor/growbox_data.db' # Absoluter Pfad
+# --- Home Assistant API Konfiguration ---
+# WICHTIG: Ersetzen Sie diese Platzhalter durch Ihre echten Werte
+HA_CONFIG = {
+    "HA_URL": "http://192.168.0.167:8123", # IP Ihres Home Assistant Servers
+    "HA_TOKEN": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiIyOWE3YmRhZDJlOTY0NzEzYTI4MmU1ZDM4OTU4YTIzOCIsImlhdCI6MTc1OTI2NjI3NiwiZXhwIjoyMDc0NjI2Mjc2fQ.ozfMbYAhcEOFvy-2zRKADr8Bq0XnI22_1jGVMsY6EQw",
+    "TEMP_ZELT_ENTITY": "sensor.growzeltdaten_temperature",
+    "HUM_ZELT_ENTITY": "sensor.growzeltdaten_humidity"
+}
 
-# --- DS18B20 Temperatursensor Konfiguration (wie gehabt) ---
+# --- Datenbank Konfiguration ---
+DB_NAME = '/home/pi/growbox_monitor/growbox_data.db'
+PHOTO_DIR = "/home/pi/growbox_photos"
+TIMELAPSE_DIR = "/home/pi/growbox_timelapses"
+LATEST_PHOTO_PATH = os.path.join(PHOTO_DIR, 'latest_photo.jpg')
+
+# Stelle sicher, dass die Verzeichnisse existieren
+os.makedirs(TIMELAPSE_DIR, exist_ok=True)
+os.makedirs(PHOTO_DIR, exist_ok=True)
+
+# WICHTIG: Pfade anpassen (vom 'which'-Befehl)
+FFMPEG_PATH = "/usr/bin/ffmpeg"
+RPICAM_STILL_PATH = "/usr/bin/rpicam-still"
+
+# --- Hilfsfunktion für Home Assistant API Abrufe ---
+def get_ha_sensor_state(entity_id):
+    """Ruft den Zustand eines Sensors von der Home Assistant API ab."""
+    url = f"{HA_CONFIG['HA_URL']}/api/states/{entity_id}"
+    headers = {
+        "Authorization": f"Bearer {HA_CONFIG['HA_TOKEN']}",
+        "Content-Type": "application/json"
+    }
+    try:
+        response = requests.get(url, headers=headers, timeout=5)
+        response.raise_for_status() # Löst Ausnahme für schlechte Statuscodes aus (4xx oder 5xx)
+        data = response.json()
+        return data.get("state", "N/A")
+    except requests.exceptions.RequestException as e:
+        print(f"Fehler beim Abruf von HA Sensor {entity_id}: {e}")
+        return "N/A"
+
+# --- DS18B20 Temperatursensor Logik ---
 base_dir = '/sys/bus/w1/devices/'
 device_folder = ''
 device_file = ''
 
 def find_ds18b20():
+    """Findet den Temperatursensor beim Start."""
+    global device_folder, device_file
     try:
+        # Sucht nach Ordnern, die mit '28-' beginnen (DS18B20-ID)
         folders = [f for f in os.listdir(base_dir) if f.startswith('28-')]
         if folders:
-            global device_folder, device_file
             device_folder = os.path.join(base_dir, folders[0])
             device_file = os.path.join(device_folder, 'w1_slave')
+            print(f"DS18B20 sensor found at: {device_folder}")
             return True
         else:
             print("No DS18B20 sensor found.")
             return False
     except FileNotFoundError:
+        print("1-Wire directory not found. Is 1-Wire enabled?")
         return False
     except Exception as e:
+        print(f"Error finding DS18B20: {e}")
         return False
 
 def read_temp_raw():
+    """Liest die Rohdaten vom Sensor."""
     try:
         if not device_file:
             if not find_ds18b20():
@@ -42,13 +85,16 @@ def read_temp_raw():
             lines = f.readlines()
         return lines
     except Exception as e:
+        print(f"Error reading raw temp: {e}")
         return None
 
 def read_temp():
+    """Konvertiert die Rohdaten in Celsius."""
     lines = read_temp_raw()
     if lines is None:
         return "N/A"
 
+    # Stellt sicher, dass die CRC-Prüfung "YES" liefert
     while lines[0].strip()[-3:] != 'YES':
         time.sleep(0.2)
         lines = read_temp_raw()
@@ -62,137 +108,142 @@ def read_temp():
         return round(temp_c, 2)
     return "N/A"
 
-# --- ADS1115 direkt initialisieren (bleibt auskommentiert) ---
-# ads = ADS.ADS1115(I2C_BUS)
-# chan_ph = AnalogIn(ads, ADS.P0)
-# chan_ec = AnalogIn(ads, ADS.A1)
 
-# --- Kamera- und Zeitraffer-Konfiguration ---
-PHOTO_DIR = "/home/pi/growbox_photos"
-TIMELAPSE_DIR = "/home/pi/growbox_timelapses"
-os.makedirs(TIMELAPSE_DIR, exist_ok=True)
-os.makedirs(PHOTO_DIR, exist_ok=True)
-
-# WICHTIG: Pfade anpassen
-FFMPEG_PATH = "/usr/bin/ffmpeg"
-RPICAM_STILL_PATH = "/usr/bin/rpicam-still"
-
-# Pfad für das neueste Foto, das der Webserver anzeigt
-LATEST_PHOTO_PATH = os.path.join(PHOTO_DIR, 'latest_photo.jpg')
-
-# --- NEU: Routen für die Kamera-API (Status und Steuerung) ---
-@app.route('/api/camera_status')
-def camera_status():
-    try:
-        status_result = subprocess.run(['sudo', 'systemctl', 'is-active', 'camera-daemon.service'],
-                                       capture_output=True, text=True, check=False)
-        status = status_result.stdout.strip()
-        if status == 'active':
-            return jsonify({'status': 'active', 'message': 'Aktiv'})
-        else:
-            return jsonify({'status': 'inactive', 'message': 'Deaktiviert'})
-    except Exception as e:
-        return jsonify({'status': 'error', 'message': f'Fehler: {str(e)}'}), 500
-
-@app.route('/api/camera_control/<action>', methods=['POST'])
-def camera_control(action):
-    if action not in ['start', 'stop']:
-        return jsonify({'error': 'Invalid action'}), 400
-
-    try:
-        if action == 'start':
-            subprocess.run(['sudo', 'systemctl', 'start', 'camera-daemon.service'], check=True)
-            return jsonify({'status': 'success', 'message': 'Dienst gestartet'})
-        elif action == 'stop':
-            subprocess.run(['sudo', 'systemctl', 'stop', 'camera-daemon.service'], check=True)
-            return jsonify({'status': 'success', 'message': 'Dienst gestoppt'})
-    except subprocess.CalledProcessError as e:
-        return jsonify({'status': 'error', 'message': f"Fehler bei der Steuerung: {e.stderr}"}), 500
-    except Exception as e:
-        return jsonify({'status': 'error', 'message': f"Allgemeiner Fehler: {str(e)}"}), 500
-
-# --- NEU: Route für das neueste Foto (wird vom Daemon erstellt) ---
+# --- Kamera Stream API (liest nur aus dem Dateisystem) ---
 @app.route('/latest_photo')
 def latest_photo():
+    """
+    Liefert das neueste Bild vom Dateisystem.
+    Das Bild wird durch das separate Skript 'update_camera_image.py' aktualisiert.
+    """
     if os.path.exists(LATEST_PHOTO_PATH):
+        # send_from_directory handhabt den korrekten MIME-Typ
         return send_from_directory(PHOTO_DIR, 'latest_photo.jpg', mimetype='image/jpeg')
     else:
-        return "No image available", 503
+        # Fallback, wenn kein Bild verfügbar ist
+        return "No image available. Run update_camera_image.py.", 503
 
-# --- API-Endpunkt für Temperaturdaten MIT FALLBACK (wie gehabt) ---
+
+# --- API-Endpunkt für Temperaturdaten (Repariert und Robust) ---
 @app.route('/api/temperature_data')
 def get_temperature_data():
+    """
+    Liefert Temperaturdaten für den Chart (JSON-Format).
+    """
     conn = None
     try:
         conn = sqlite3.connect(DB_NAME)
         cursor = conn.cursor()
+
+        # Standardmäßig 24 Stunden, konvertiert von Stunden in Sekunden (1h = 3600s)
         hours = request.args.get('hours', type=int, default=24)
+
+        # Berechne den ISO-Zeitpunkt für die Abfrage
         time_ago = datetime.datetime.now() - datetime.timedelta(hours=hours)
         time_ago_iso = time_ago.isoformat()
+
+        # Abfrage der Daten aus der Datenbank
         cursor.execute("SELECT timestamp, value FROM temperatures WHERE timestamp >= ? ORDER BY timestamp ASC", (time_ago_iso,))
         data = cursor.fetchall()
+
         if not data:
+            # Fallback bei leeren Daten
+            print("DB ist leer oder keine Daten für den Zeitraum. Fallback-Daten werden generiert.")
+
+            # Generiere Dummy-Daten (um den Chart nicht crashen zu lassen)
             labels = []
             values = []
             start_time = datetime.datetime.now() - datetime.timedelta(hours=hours)
-            num_points = (hours * 60) // 5
+            num_points = (hours * 12) # 12 Punkte pro Stunde (alle 5 Minuten)
+
             for i in range(num_points):
                 point_time = start_time + datetime.timedelta(minutes=i * 5)
                 labels.append(point_time.isoformat())
+                # Generiere plausible, aber fiktive Temperaturwerte
                 sample_temp = 22.0 + (i % 20 - 10) * 0.2 + (i % 5 - 2.5) * 0.5
                 values.append(round(sample_temp, 2))
+
             return jsonify({'labels': labels, 'values': values})
+
+        # Echte Daten extrahieren und zurückgeben
         labels = [row[0] for row in data]
         values = [row[1] for row in data]
         return jsonify({'labels': labels, 'values': values})
+
     except sqlite3.Error as e:
+        print(f"Datenbankfehler: {e}. Fallback wird verwendet.")
+        # Generiere Fallback-Daten auch bei Datenbankverbindungsfehlern
+        hours = request.args.get('hours', type=int, default=24)
         labels = []
         values = []
-        hours = request.args.get('hours', type=int, default=24)
         start_time = datetime.datetime.now() - datetime.timedelta(hours=hours)
-        num_points = (hours * 60) // 5
+        num_points = (hours * 12)
+
         for i in range(num_points):
             point_time = start_time + datetime.timedelta(minutes=i * 5)
             labels.append(point_time.isoformat())
+            # Generiere plausible, aber fiktive Temperaturwerte
             sample_temp = 22.0 + (i % 20 - 10) * 0.2 + (i % 5 - 2.5) * 0.5
             values.append(round(sample_temp, 2))
+
         return jsonify({'labels': labels, 'values': values}), 500
+
     finally:
         if conn:
             conn.close()
 
-# --- Webserver Routen (index, create_timelapse, list_timelapses, download_timelapse) ---
+
+# --- Webserver Routen ---
 @app.route('/')
 def index():
-    stream_url = url_for('latest_photo')
+    """Rendert die Hauptseite mit aktuellen Daten."""
     current_datetime = datetime.datetime.now()
     current_time = current_datetime.strftime("%H:%M:%S")
     current_date = current_datetime.strftime("%d.%m.%Y")
-    temperature_c = read_temp()
+
+    # 1. Lokale (Pi) Temperatur abrufen
+    temperature_pi = read_temp()
+    
+    # 2. HA Zelt-Daten abrufen
+    temp_zelt = get_ha_sensor_state(HA_CONFIG["TEMP_ZELT_ENTITY"])
+    hum_zelt = get_ha_sensor_state(HA_CONFIG["HUM_ZELT_ENTITY"])
+
+
     return render_template('index.html',
                            current_time=current_time,
                            current_date=current_date,
-                           temperature=temperature_c,
-                           mjpg_stream_url=stream_url)
+                           temperature=temperature_pi, # Das ist die Pi-Temperatur
+                           temp_zelt=temp_zelt,       # Neu: Zelt-Temperatur
+                           hum_zelt=hum_zelt)         # Neu: Zelt-Luftfeuchtigkeit
 
 @app.route('/create_timelapse', methods=['POST'])
 def create_timelapse():
+    """Erstellt ein Zeitraffervideo aus den archivierten Bildern."""
     os.makedirs(PHOTO_DIR, exist_ok=True)
     os.makedirs(TIMELAPSE_DIR, exist_ok=True)
-    temp_files = glob.glob(os.path.join(TIMELAPSE_DIR, 'temp_*.jpg'))
-    for f in temp_files:
+
+    # Temporäre Links für ffmpeg aufräumen
+    for f in glob.glob(os.path.join(TIMELAPSE_DIR, 'temp_*.jpg')):
         os.remove(f)
-    photos = sorted(glob.glob(os.path.join(PHOTO_DIR, '*.jpg')))
+
+    # Archivierte Fotos verwenden (die alle 30 Minuten gespeichert werden)
+    photos = sorted(glob.glob(os.path.join(PHOTO_DIR, 'archive_photo_*.jpg')))
+
     if not photos:
-        return render_template('timelapse_status.html', message="No photos found to create a timelapse.", video_url=None), 404
+        return render_template('timelapse_status.html', message="Keine archivierten Fotos gefunden, um einen Zeitraffer zu erstellen.", video_url=None), 404
+
+    # Erstelle symbolische Links, damit ffmpeg die Bilder sequenziell verarbeiten kann
     for i, photo_path in enumerate(photos):
-        link_path = os.path.join(TIMELAPSE_DIR, f"temp_%05d.jpg")
+        link_path = os.path.join(TIMELAPSE_DIR, f"temp_{i:05d}.jpg")
         try:
             os.symlink(photo_path, link_path)
         except FileExistsError:
             pass
+
     timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
     output_video = os.path.join(TIMELAPSE_DIR, f"timelapse_{timestamp}.mp4")
+
+    # FFMPEG-Befehl
     command = [
         FFMPEG_PATH, "-y",
         "-framerate", "10",
@@ -202,35 +253,40 @@ def create_timelapse():
         "-crf", "23",
         output_video
     ]
-    print(f"Starting ffmpeg: {' '.join(command)}")
+
     try:
-        result = subprocess.run(command, capture_output=True, text=True, check=True)
-        message = f"Timelapse '{os.path.basename(output_video)}' created successfully!"
+        subprocess.run(command, capture_output=True, text=True, check=True)
+        message = f"Zeitraffer '{os.path.basename(output_video)}' erfolgreich erstellt!"
     except subprocess.CalledProcessError as e:
-        message = f"Error creating timelapse: {e.stderr}"
+        message = f"Fehler beim Erstellen des Zeitraffers: {e.stderr}"
     except FileNotFoundError:
-        message = "FFmpeg is not installed. Please run 'sudo apt-get install ffmpeg'."
+        message = "FFmpeg ist nicht installiert oder Pfad ist falsch."
     finally:
+        # Temporäre Links wieder entfernen
         for f in glob.glob(os.path.join(TIMELAPSE_DIR, 'temp_*.jpg')):
             os.remove(f)
+
     return render_template('timelapse_status.html', message=message, video_url=os.path.basename(output_video))
 
 @app.route('/timelapses')
 def list_timelapses():
+    """Zeigt eine Liste der erstellten Zeitraffervideos an."""
     os.makedirs(TIMELAPSE_DIR, exist_ok=True)
-    timelapses = sorted(os.listdir(TIMELAPSE_DIR), reverse=True)
+    timelapses = sorted([f for f in os.listdir(TIMELAPSE_DIR) if f.endswith('.mp4')], reverse=True)
     return render_template('timelapse_list.html', timelapses=timelapses)
 
 @app.route('/timelapses/<filename>')
 def download_timelapse(filename):
-    os.makedirs(TIMELAPSE_DIR, exist_ok=True)
+    """Ermöglicht den Download eines Zeitraffers."""
     return send_from_directory(TIMELAPSE_DIR, filename, as_attachment=True)
 
 @app.route('/favicon.ico')
 def favicon():
+    """Standard-Favicon-Route."""
     return send_from_directory(os.path.join(app.root_path, 'static'),
                                'favicon.ico', mimetype='image/vnd.microsoft.icon')
 
 if __name__ == '__main__':
     find_ds18b20()
+    # Starte die App
     app.run(host='0.0.0.0', port=8000, debug=True)
