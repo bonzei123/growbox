@@ -15,7 +15,8 @@ HA_CONFIG = {
     "HA_URL": "http://192.168.0.167:8123", # IP Ihres Home Assistant Servers
     "HA_TOKEN": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiIyOWE3YmRhZDJlOTY0NzEzYTI4MmU1ZDM4OTU4YTIzOCIsImlhdCI6MTc1OTI2NjI3NiwiZXhwIjoyMDc0NjI2Mjc2fQ.ozfMbYAhcEOFvy-2zRKADr8Bq0XnI22_1jGVMsY6EQw",
     "TEMP_ZELT_ENTITY": "sensor.growzeltdaten_temperature",
-    "HUM_ZELT_ENTITY": "sensor.growzeltdaten_humidity"
+    "HUM_ZELT_ENTITY": "sensor.growzeltdaten_humidity",
+    "LIGHT_POWER_ENTITY": "sensor.grow_licht_power"
 }
 
 # --- Datenbank Konfiguration ---
@@ -207,14 +208,15 @@ def index():
     # 2. HA Zelt-Daten abrufen
     temp_zelt = get_ha_sensor_state(HA_CONFIG["TEMP_ZELT_ENTITY"])
     hum_zelt = get_ha_sensor_state(HA_CONFIG["HUM_ZELT_ENTITY"])
-
+    light_power = get_ha_sensor_state(HA_CONFIG["LIGHT_POWER_ENTITY"])
 
     return render_template('index.html',
                            current_time=current_time,
                            current_date=current_date,
                            temperature=temperature_pi, # Das ist die Pi-Temperatur
                            temp_zelt=temp_zelt,       # Neu: Zelt-Temperatur
-                           hum_zelt=hum_zelt)         # Neu: Zelt-Luftfeuchtigkeit
+                           hum_zelt=hum_zelt,         # Neu: Zelt-Luftfeuchtigkeit
+                           light_power=light_power)   # Neu: Lampenstärke
 
 @app.route('/create_timelapse', methods=['POST'])
 def create_timelapse():

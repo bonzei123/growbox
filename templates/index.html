@@ -52,16 +52,11 @@
 <strong>Temperatur Pi:</strong> <span class="value">{{ temperature }} °C</span>
 </div>
 </div>
-<div class="data-card-item" style="border-left: 5px solid #60a5fa;">
-<i class="fas fa-vial" style="color: #60a5fa;"></i>
-<div class="data-info">
-<strong>pH-Wert:</strong> <span class="value">Wird hinzugefügt...</span>
-</div>
-</div>
+<!-- 4. NEU: Lampenstärke (von HA) -->
 <div class="data-card-item" style="border-left: 5px solid #facc15;">
-<i class="fas fa-flask" style="color: #facc15;"></i>
+<i class="fas fa-lightbulb" style="color: #facc15;"></i>
 <div class="data-info">
-<strong>EC-Wert:</strong> <span class="value">Wird hinzugefügt...</span>
+<strong>Lampenstärke:</strong> <span class="value">{{ light_power }} W</span>
 </div>
 </div>
 </div>
@@ -72,6 +67,20 @@
 <div class="widget" id="pumps-widget">
 <h2 style="color: #6ee7b7;"><i class="fas fa-pump"></i> Pumpensteuerung</h2>
 <div class="data-section-grid">
+<!-- pH-Wert (von HA) -->
+<div class="data-card-item" style="border-left: 5px solid #8b5cf6;">
+<i class="fas fa-vial" style="color: #8b5cf6;"></i>
+<div class="data-info">
+<strong>pH-Wert:</strong> <span class="value">Wird hinzugefügt...</span>
+</div>
+</div>
+<!-- EC-Wert (von HA) -->
+<div class="data-card-item" style="border-left: 5px solid #f472b6;">
+<i class="fas fa-flask" style="color: #f472b6;"></i>
+<div class="data-info">
+<strong>EC-Wert:</strong> <span class="value">Wird hinzugefügt...</span>
+</div>
+</div>
 <div class="data-card-item">
 <i class="fas fa-water"></i>
 <div class="data-info">
