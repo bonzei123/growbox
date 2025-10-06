@@ -23,7 +23,7 @@ HA_CONFIG = {
     "TEMP_ZELT_ENTITY": "sensor.growzeltdaten_temperature",
     "HUM_ZELT_ENTITY": "sensor.growzeltdaten_humidity",
     "LIGHT_POWER_ENTITY": "sensor.grow_licht_power",
-    "LUEFTER_ENTITY": "switch.grow_luftung_socket_1" # Für zukünftige direkte Steuerung, derzeit in lueftung.py
+    "LUEFTER_ENTITY": "switch.grow_luftung_socket_1" # Entität für den aktuellen Lüfterstatus und manuelle Steuerung
 }
 
 # --- Datenbank und Pfad Konfiguration ---
@@ -33,9 +33,7 @@ TIMELAPSE_DIR = os.path.join(BASE_DIR, "growbox_timelapses")
 LATEST_PHOTO_PATH = os.path.join(PHOTO_DIR, 'latest_photo.jpg')
 
 # Cronjob Konfiguration (ACHTUNG: Muss dem Benutzer entsprechen, der die App ausführt)
-# Der Pfad zur Crontab-Datei des Benutzers, der die cronjobs ausführt (meist 'pi')
-CRON_USER = os.environ.get('USER', 'pi')
-# Pfad zum Python-Binary in der virtuellen Umgebung
+# Der Pfad zum Python-Binary in der virtuellen Umgebung
 PYTHON_PATH = os.path.join(BASE_DIR, 'venv', 'bin', 'python3')
 # Pfad zum Lüftungsskript
 LUEFTER_SCRIPT_PATH = os.path.join(BASE_DIR, 'lueftung.py')
@@ -93,45 +91,52 @@ def save_setting(key, value):
 def update_crontab(on_minutes, off_minutes):
     """
     Aktualisiert die Crontab des Benutzers.
-    ACHTUNG: subprocess.run erfordert, dass der Benutzer, der die Flask App ausführt,
-    die Rechte hat, 'crontab -e' und 'crontab -l' auszuführen.
     """
     try:
+        # Finde den Benutzer, der die App ausführt, um die Crontab richtig zu behandeln
+        cron_user = os.environ.get('USER') or os.path.basename(os.path.expanduser('~'))
+
         # 1. Aktuelle Crontab lesen
-        result = subprocess.run(['crontab', '-l'], capture_output=True, text=True, check=False, user=CRON_USER)
+        # -l: listet die Crontab. pipe sie durch den stdin/stdout
+        result = subprocess.run(['crontab', '-l'], capture_output=True, text=True, check=False)
         current_crontab = result.stdout
         
         # 2. Bestehende Lüfter-Einträge entfernen
         new_crontab_lines = []
+        # Marker, um sicherzustellen, dass nur die von uns erstellten Einträge entfernt werden
+        luefter_block_start = f"{CRON_IDENTIFIER} START"
+        luefter_block_end = f"{CRON_IDENTIFIER} END"
+
         in_luefter_block = False
         for line in current_crontab.splitlines():
-            if line.startswith(CRON_IDENTIFIER):
+            if line.strip() == luefter_block_start:
                 in_luefter_block = True
                 continue
-            if line.startswith("# END" + CRON_IDENTIFIER):
+            if line.strip() == luefter_block_end:
                 in_luefter_block = False
                 continue
-            if not in_luefter_block and CRON_IDENTIFIER not in line:
+            if not in_luefter_block:
                  # Behält alle Zeilen bei, die nicht zum Lüfter-Block gehören
                 new_crontab_lines.append(line)
         
         # 3. Neue Lüfter-Einträge hinzufügen
         if on_minutes or off_minutes:
-            new_crontab_lines.append(CRON_IDENTIFIER + " START")
+            new_crontab_lines.append(luefter_block_start)
             # Aufbau des Cron-Befehls: [Minuten] [Stunden] * * * [PYTHON_PATH] [LUEFTER_SCRIPT] [Command]
             if on_minutes:
                 new_crontab_lines.append(f"{on_minutes} * * * * {PYTHON_PATH} {LUEFTER_SCRIPT_PATH} on")
             if off_minutes:
                 new_crontab_lines.append(f"{off_minutes} * * * * {PYTHON_PATH} {LUEFTER_SCRIPT_PATH} off")
-            new_crontab_lines.append(CRON_IDENTIFIER + " END")
+            new_crontab_lines.append(luefter_block_end)
 
         # 4. Neue Crontab schreiben
+        # Füge einen abschließenden Zeilenumbruch hinzu, was gute Praxis ist
         new_crontab = "\n".join(new_crontab_lines) + "\n"
         
         # pipe den neuen Inhalt an 'crontab -'
-        process = subprocess.run(['crontab', '-'], input=new_crontab, encoding='utf-8', check=True, user=CRON_USER)
+        process = subprocess.run(['crontab', '-'], input=new_crontab, encoding='utf-8', check=True)
 
-        print(f"Crontab erfolgreich aktualisiert für Benutzer {CRON_USER}.")
+        print(f"Crontab erfolgreich aktualisiert für Benutzer {cron_user}.")
         return True, "Cronjobs erfolgreich aktualisiert und gespeichert!"
         
     except subprocess.CalledProcessError as e:
@@ -209,8 +214,7 @@ def get_temperature_data():
 
         if not data:
             # Fallback bei leeren Daten
-            labels = []
-            values = []
+            labels = []; values = []
             start_time = datetime.datetime.now() - datetime.timedelta(hours=hours)
             num_points = (hours * 12)
             for i in range(num_points):
@@ -247,13 +251,12 @@ def get_luefter_logs():
     try:
         conn = get_db_connection()
         cursor = conn.cursor()
-        # Hole die letzten 20 Einträge in umgekehrter Reihenfolge (neueste zuerst)
         cursor.execute("SELECT timestamp, action, status FROM luefter_logs ORDER BY id DESC LIMIT 20")
         logs = cursor.fetchall()
         
-        # Formatiere die Logs für JSON-Antwort
         log_list = []
         for ts, action, status in logs:
+            # Konvertiere ISO-Format in lesbares Format
             log_list.append({
                 'timestamp': datetime.datetime.fromisoformat(ts).strftime('%Y-%m-%d %H:%M:%S'),
                 'action': action,
@@ -291,6 +294,47 @@ def save_luefter_settings():
     else:
         return jsonify({'error': message}), 500
 
+# --- API Endpunkt für manuelle Lüftersteuerung ---
+@app.route('/api/luefter_toggle', methods=['POST'])
+def luefter_toggle():
+    """Sendet einen direkten AN/AUS-Befehl an Home Assistant."""
+    data = request.get_json()
+    command = data.get('command', '').lower()
+    
+    if command not in ['on', 'off']:
+        return jsonify({'error': 'Ungültiger Befehl. Erwarte "on" oder "off".'}), 400
+        
+    ha_service = 'turn_on' if command == 'on' else 'turn_off'
+    
+    url = f"{HA_CONFIG['HA_URL']}/api/services/switch/{ha_service}"
+    headers = {
+        "Authorization": f"Bearer {HA_CONFIG['HA_TOKEN']}",
+        "Content-Type": "application/json"
+    }
+    payload = {
+        "entity_id": HA_CONFIG["LUEFTER_ENTITY"]
+    }
+    
+    try:
+        response = requests.post(url, headers=headers, json=payload, timeout=5)
+        response.raise_for_status()
+        
+        # Manuelle Steuerung muss nicht in die luefter_logs, da der Cronjob-Log
+        # nur die automatischen Schaltungen protokolliert, aber wir loggen es zur Sicherheit:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        timestamp = datetime.datetime.now().isoformat()
+        cursor.execute("INSERT INTO luefter_logs (timestamp, action, status) VALUES (?, ?, ?)", 
+                       (timestamp, ha_service, "MANUAL_SUCCESS"))
+        conn.commit()
+        conn.close()
+        
+        return jsonify({'message': f"Lüfter erfolgreich auf {command} gesetzt."})
+        
+    except requests.exceptions.RequestException as e:
+        print(f"FEHLER beim manuellen HA-Aufruf: {e}")
+        return jsonify({'error': f"HA API Fehler: {e}"}), 500
+
 
 # --- Webserver Routen ---
 @app.route('/')
@@ -307,8 +351,9 @@ def index():
     temp_zelt = get_ha_sensor_state(HA_CONFIG["TEMP_ZELT_ENTITY"])
     hum_zelt = get_ha_sensor_state(HA_CONFIG["HUM_ZELT_ENTITY"])
     light_power = get_ha_sensor_state(HA_CONFIG["LIGHT_POWER_ENTITY"])
+    luefter_state = get_ha_sensor_state(HA_CONFIG["LUEFTER_ENTITY"]) # Aktueller Status des Lüfters
     
-    # 3. Lüfter Cron Einstellungen abrufen
+    # 3. Lüfter Cron Einstellungen und Logs abrufen
     luefter_settings = get_settings()
 
     conn = None
@@ -341,7 +386,8 @@ def index():
                            # Lüftersteuerung Variablen
                            luefter_on_minutes=luefter_settings['on_minutes'],
                            luefter_off_minutes=luefter_settings['off_minutes'],
-                           luefter_logs=luefter_logs)
+                           luefter_logs=luefter_logs,
+                           luefter_state=luefter_state) # NEU: Lüfterstatus
 
 @app.route('/create_timelapse', methods=['POST'])
 def create_timelapse():
@@ -405,9 +451,15 @@ if __name__ == '__main__':
     # Initialisiere die DB, falls sie noch nicht existiert
     try:
         conn = get_db_connection()
-        from lueftung import initialize_db # Importiere die DB-Initialisierung aus lueftung.py
-        initialize_db()
+        # Hinweis: Hier müsste die Funktion initialize_db aus lueftung.py importiert werden,
+        # was bei einem direkten Import zu Problemen führen kann, da lueftung.py
+        # selbst bereits die DB nutzt. Die manuelle Initialisierung ist sicherer.
+        # Stattdessen: Führe die Initialisierung hier durch:
+        cursor = conn.cursor()
+        cursor.execute("CREATE TABLE IF NOT EXISTS luefter_logs (id INTEGER PRIMARY KEY AUTOINCREMENT, timestamp TEXT NOT NULL, action TEXT NOT NULL, status TEXT NOT NULL)")
+        cursor.execute("CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEXT NOT NULL)")
+        conn.commit()
     except Exception as e:
-        print(f"WARNUNG: DB konnte nicht initialisiert werden, da lueftung.py fehlt oder ein Fehler auftrat: {e}")
+        print(f"WARNUNG: DB Initialisierung fehlgeschlagen: {e}")
 
     app.run(host='0.0.0.0', port=8000, debug=True)

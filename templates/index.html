@@ -59,7 +59,7 @@
 </div>
 </div>
 
-<!-- Pumpensteuerung Widget (enthält pH, EC und Pumpen-Status) -->
+<!-- Pumpensteuerung Widget (enthält jetzt pH, EC und Pumpen-Status) -->
 
 <div class="widget" id="pumps-widget">
 <h2 style="color: #6ee7b7;"><i class="fas fa-pump"></i> Pumpensteuerung</h2>
@@ -95,12 +95,32 @@
 </div>
 </div>
 
-<!-- NEU: Lüftersteuerung und Log Widget -->
+<!-- Lüftersteuerung und Log Widget (enthält jetzt Status und manuelle Steuerung) -->
 <div class="widget" id="luefter-widget">
 <h2 style="color: #6ee7b7;"><i class="fas fa-fan"></i> Lüftersteuerung und Protokoll</h2>
 <div class="luefter-content">
-    <div class="luefter-settings">
-        <h3><i class="fas fa-clock"></i> Schaltzeiten bearbeiten (Minuten)</h3>
+    
+    <!-- Manueller Status und Steuerung -->
+    <div class="luefter-manual-control" style="margin-bottom: 2rem; padding-bottom: 1rem; border-bottom: 1px solid #333;">
+        <h3><i class="fas fa-power-off"></i> Manueller Status</h3>
+        <div style="display: flex; align-items: center; gap: 1.5rem; margin-top: 10px;">
+            <!-- Statusanzeige -->
+            <div id="luefter-status-display" style="font-size: 1.2rem; font-weight: bold; padding: 5px 10px; border-radius: 4px; color: #fff; background-color: {{ '#10b981' if luefter_state == 'on' else '#f87171' }}">
+                Status: {{ 'AN' if luefter_state == 'on' else 'AUS' }}
+            </div>
+
+            <!-- Manuelle Buttons -->
+            <div class="button-group">
+                <button class="button" onclick="toggleLuefter('on')" style="background-color: #10b981;"><i class="fas fa-play"></i> AN</button>
+                <button class="button button-secondary" onclick="toggleLuefter('off')" style="background-color: #f87171;"><i class="fas fa-stop"></i> AUS</button>
+            </div>
+        </div>
+    </div>
+
+
+    <!-- Schaltzeiten -->
+    <div class="luefter-settings" style="margin-bottom: 2rem;">
+        <h3><i class="fas fa-clock"></i> Automatische Schaltzeiten (Minuten)</h3>
         <form id="luefter-settings-form">
             <div class="input-group">
                 <label for="on_minutes">Lüfter AN Minuten (z.B. 0,20,40):</label>
@@ -115,7 +135,8 @@
         <p id="settings-status" style="margin-top: 10px; color: #4ade80;"></p>
     </div>
 
-    <div class="luefter-log" style="margin-top: 2rem;">
+    <!-- Protokolle -->
+    <div class="luefter-log">
         <h3><i class="fas fa-history"></i> Letzte Schaltvorgänge</h3>
         <pre id="luefter-log-output" style="background-color: #1f1f1f; color: #fff; padding: 10px; border-radius: 6px; font-size: 0.85rem; max-height: 250px; overflow-y: scroll;">
 {% for log in luefter_logs %}
@@ -340,6 +361,44 @@ async function loadLuefterLogs() {
     }
 }
 
+// Manuelle Steuerung des Lüfters (AN/AUS)
+async function toggleLuefter(command) {
+    const statusDisplay = document.getElementById('luefter-status-display');
+    const oldText = statusDisplay.textContent;
+    statusDisplay.textContent = `Schalte ${command.toUpperCase()}...`;
+    statusDisplay.style.backgroundColor = '#fb923c'; // Orange während des Schaltens
+
+    try {
+        const response = await fetch('/api/luefter_toggle', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ command: command })
+        });
+
+        const result = await response.json();
+
+        if (response.ok) {
+            // Aktualisiere Statusanzeige
+            const newState = command === 'on' ? 'AN' : 'AUS';
+            statusDisplay.textContent = `Status: ${newState}`;
+            statusDisplay.style.backgroundColor = command === 'on' ? '#10b981' : '#f87171';
+            // Lade die Logs neu, um den manuellen Schaltvorgang zu sehen
+            loadLuefterLogs();
+        } else {
+            alert(`Fehler beim Schalten: ${result.error || 'Unbekannter Fehler'}`);
+            statusDisplay.textContent = oldText; // Zurück zum alten Zustand
+            statusDisplay.style.backgroundColor = oldText.includes('AN') ? '#10b981' : '#f87171';
+        }
+
+    } catch (error) {
+        console.error("Netzwerkfehler beim Schalten:", error);
+        alert('Netzwerkfehler: Gerät konnte nicht geschaltet werden.');
+        statusDisplay.textContent = oldText; // Zurück zum alten Zustand
+        statusDisplay.style.backgroundColor = oldText.includes('AN') ? '#10b981' : '#f87171';
+    }
+}
+
+
 // Behandelt das Speichern der Cron-Minuten
 document.getElementById('luefter-settings-form').addEventListener('submit', async function(e) {
     e.preventDefault();
@@ -505,5 +564,4 @@ opacity: 0.9;
     font-size: 0.8rem;
 }
 </style>
-
 {% endblock %}
