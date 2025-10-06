@@ -3,3 +3,6 @@ growbox_data.db
 log_temperature.log
 venv/
 *.bak
+__pycache__/
+growbox_photos/
+growbox_timelapses/

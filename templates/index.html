@@ -5,10 +5,7 @@
 {% block head_extra %}
 
 <!-- Chart.js und SortableJS für die Dashboard-Funktionalität -->
-
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.0/Sortable.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/date-fns@2.30.0/locale/de/index.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns@3.0.0/dist/chartjs-adapter-date-fns.bundle.min.js"></script>
 
 {% endblock %}
@@ -31,28 +28,28 @@
 <div class="widget" id="data-widget">
 <h2 style="color: #6ee7b7;"><i class="fas fa-chart-line"></i> Aktuelle Daten</h2>
 <div class="data-section-grid">
-<!-- NEU: Temperatur Zelt -->
-<div class="data-card-item" style="border-left: 5px solid #ef4444;">
-<i class="fas fa-temperature-high" style="color: #ef4444;"></i>
+<!-- 1. Interne Pi-Temperatur -->
+<div class="data-card-item" style="border-left: 5px solid #60a5fa;">
+<i class="fas fa-microchip" style="color: #60a5fa;"></i>
+<div class="data-info">
+<strong>Temperatur (Pi):</strong> <span class="value">{{ temperature }} °C</span>
+</div>
+</div>
+<!-- 2. Temperatur Zelt (von HA) -->
+<div class="data-card-item" style="border-left: 5px solid #fb923c;">
+<i class="fas fa-thermometer-half" style="color: #fb923c;"></i>
 <div class="data-info">
 <strong>Temperatur Zelt:</strong> <span class="value">{{ temp_zelt }} °C</span>
 </div>
 </div>
-<!-- NEU: Luftfeuchtigkeit Zelt -->
-<div class="data-card-item" style="border-left: 5px solid #3b82f6;">
-<i class="fas fa-cloud-rain" style="color: #3b82f6;"></i>
+<!-- 3. Luftfeuchtigkeit Zelt (von HA) -->
+<div class="data-card-item" style="border-left: 5px solid #4ade80;">
+<i class="fas fa-tint" style="color: #4ade80;"></i>
 <div class="data-info">
 <strong>Luftfeuchtigkeit Zelt:</strong> <span class="value">{{ hum_zelt }} %</span>
 </div>
 </div>
-<!-- Raspberry Pi Temperatur (Extern) -->
-<div class="data-card-item" style="border-left: 5px solid #fb923c;">
-<i class="fas fa-thermometer-half" style="color: #fb923c;"></i>
-<div class="data-info">
-<strong>Temperatur Pi:</strong> <span class="value">{{ temperature }} °C</span>
-</div>
-</div>
-<!-- 4. NEU: Lampenstärke (von HA) -->
+<!-- 4. Lampenstärke (von HA) -->
 <div class="data-card-item" style="border-left: 5px solid #facc15;">
 <i class="fas fa-lightbulb" style="color: #facc15;"></i>
 <div class="data-info">
@@ -62,7 +59,7 @@
 </div>
 </div>
 
-<!-- Pumpensteuerung Widget -->
+<!-- Pumpensteuerung Widget (enthält pH, EC und Pumpen-Status) -->
 
 <div class="widget" id="pumps-widget">
 <h2 style="color: #6ee7b7;"><i class="fas fa-pump"></i> Pumpensteuerung</h2>
@@ -81,12 +78,14 @@
 <strong>EC-Wert:</strong> <span class="value">Wird hinzugefügt...</span>
 </div>
 </div>
+<!-- Pumpe 1 (Steuerung) -->
 <div class="data-card-item">
 <i class="fas fa-water"></i>
 <div class="data-info">
 <strong>Pumpe 1 (pH+):</strong> <span class="value">Status wird hinzugefügt...</span>
 </div>
 </div>
+<!-- Pumpe 2 (Steuerung) -->
 <div class="data-card-item">
 <i class="fas fa-tint"></i>
 <div class="data-info">
@@ -96,7 +95,40 @@
 </div>
 </div>
 
-<!-- NEU: Temperaturverlauf Graph Widget -->
+<!-- NEU: Lüftersteuerung und Log Widget -->
+<div class="widget" id="luefter-widget">
+<h2 style="color: #6ee7b7;"><i class="fas fa-fan"></i> Lüftersteuerung und Protokoll</h2>
+<div class="luefter-content">
+    <div class="luefter-settings">
+        <h3><i class="fas fa-clock"></i> Schaltzeiten bearbeiten (Minuten)</h3>
+        <form id="luefter-settings-form">
+            <div class="input-group">
+                <label for="on_minutes">Lüfter AN Minuten (z.B. 0,20,40):</label>
+                <input type="text" id="on_minutes" name="on_minutes" value="{{ luefter_on_minutes }}" required>
+            </div>
+            <div class="input-group">
+                <label for="off_minutes">Lüfter AUS Minuten (z.B. 5,25,45):</label>
+                <input type="text" id="off_minutes" name="off_minutes" value="{{ luefter_off_minutes }}" required>
+            </div>
+            <button type="submit" class="button button-secondary"><i class="fas fa-save"></i> Zeiten speichern</button>
+        </form>
+        <p id="settings-status" style="margin-top: 10px; color: #4ade80;"></p>
+    </div>
+
+    <div class="luefter-log" style="margin-top: 2rem;">
+        <h3><i class="fas fa-history"></i> Letzte Schaltvorgänge</h3>
+        <pre id="luefter-log-output" style="background-color: #1f1f1f; color: #fff; padding: 10px; border-radius: 6px; font-size: 0.85rem; max-height: 250px; overflow-y: scroll;">
+{% for log in luefter_logs %}
+{{ log.timestamp }} [{{ log.status }}] {{ log.action }}
+{% endfor %}
+        </pre>
+        <button onclick="loadLuefterLogs()" class="button button-secondary button-small" style="margin-top: 10px;"><i class="fas fa-sync"></i> Logs aktualisieren</button>
+    </div>
+</div>
+</div>
+
+
+<!-- Temperaturverlauf Graph Widget -->
 
 <div class="widget" id="temperature-graph">
 <div class="widget-header">
@@ -120,8 +152,8 @@
 
 <div class="camera-section widget" id="camera-widget">
 <h2 style="color: #6ee7b7;"><i class="fas fa-camera"></i> Live-Ansicht der Box</h2>
-<!-- _t= Parameter verhindert Browser-Caching -->
-<img src="{{ url_for('latest_photo') }}?_t={{ current_time }}" alt="Aktuelles Foto der Growbox">
+<!-- \_t= Parameter verhindert Browser-Caching -->
+<img src="{{ url_for('latest_photo') }}?\_t={{ current_time }}" alt="Aktuelles Foto der Growbox">
 <div class="button-group">
 <form action="/create_timelapse" method="post">
 <button type="submit" class="button button-secondary"><i class="fas fa-hourglass-half"></i> Zeitraffer erstellen</button>
@@ -146,63 +178,63 @@ gridLine: "rgba(255, 255, 255, 0.1)", // Helle, transparente Gitterlinien
 fontColor: "#e5e7eb" // Helle Schrift
 };
 
+// --- CHART FUNKTIONALITÄT ---
+
 // Diese Funktion wird aufgerufen, wenn ein Zeit-Button geklickt wird
 async function updateChart(hours) {
-console.log('Lade Daten für die letzten ${hours} Stunden...');
+console.log(`Lade Daten für die letzten ${hours} Stunden...`);
 
 // Aktiven Button-Stil aktualisieren
 document.querySelectorAll(".btn-timeframe").forEach(button => {
-// KORRIGIERT: Keine MASKIERUNG HIER
-const buttonHours = parseInt(button.getAttribute("onclick").match(/(\d+)/)[1]);
-if (buttonHours === hours) {
-button.classList.add("active");
-} else {
-button.classList.remove("active");
-}
+    const buttonHours = parseInt(button.getAttribute("onclick").match(/(\d+)/)[1]);
+    if (buttonHours === hours) {
+        button.classList.add("active");
+    } else {
+        button.classList.remove("active");
+    }
 });
 
 try {
-// Daten von unserem API-Endpunkt abrufen
-const response = await fetch("/api/temperature_data?hours=${hours}");
-if (!response.ok) {
-throw new Error("Server-Fehler: ${response.status}");
-}
-const data = await response.json();
-
-// Die Daten im Chart aktualisieren
-tempChartInstance.data.labels = data.labels;
-tempChartInstance.data.datasets[0].data = data.values;
-
-// Konfiguriert die Zeiteinheit dynamisch
-let timeUnit = 'hour';
-if (hours > 72) { // Mehr als 3 Tage
-    timeUnit = 'day';
-} else if (hours < 3) { // Weniger als 3 Stunden
-    timeUnit = 'minute';
-}
-
-tempChartInstance.options.scales.x.time.unit = timeUnit;
-// KORRIGIERT: Keine MASKIERUNG HIER
-tempChartInstance.options.scales.x.time.displayFormats.hour = (timeUnit === 'hour' || timeUnit === 'minute') ? 'HH:mm' : 'dd.MM.';
-tempChartInstance.options.scales.x.time.tooltipFormat = (timeUnit === 'day') ? 'dd.MM.yyyy' : 'dd.MM.yyyy HH:mm';
+    const response = await fetch(`/api/temperature_data?hours=${hours}`);
+    if (!response.ok) {
+        throw new Error(`Server-Fehler: ${response.status}`);
+    }
+    const data = await response.json();
 
 
-// Prüfen auf leere Daten
-const hasData = data.labels.length > 0;
-tempChartInstance.options.plugins.title.display = !hasData;
-// KORRIGIERT: Keine MASKIERUNG HIER
-tempChartInstance.options.plugins.title.text = hasData ? '' : 'Keine Daten für diesen Zeitraum verfügbar';
+    // Die Daten im Chart aktualisieren
+    tempChartInstance.data.labels = data.labels;
+    tempChartInstance.data.datasets[0].data = data.values;
+
+    // Konfiguriert die Zeiteinheit dynamisch
+    let timeUnit = "hour";
+    if (hours > 72) { // Mehr als 3 Tage
+        timeUnit = "day";
+    } else if (hours < 3) { // Weniger als 3 Stunden
+        timeUnit = "minute";
+    }
+
+    tempChartInstance.options.scales.x.time.unit = timeUnit;
+    tempChartInstance.options.scales.x.time.displayFormats.hour = (timeUnit === "hour" || timeUnit === "minute") ? "HH:mm" : "dd.MM.";
+    tempChartInstance.options.scales.x.time.tooltipFormat = (timeUnit === "day") ? "dd.MM.yyyy" : "dd.MM.yyyy HH:mm";
 
 
-// Chart neu zeichnen
-tempChartInstance.update();
+    // Prüfen auf leere Daten
+    const hasData = data.labels.length > 0;
+    tempChartInstance.options.plugins.title.display = !hasData;
+    tempChartInstance.options.plugins.title.text = hasData ? "" : "Keine Daten für diesen Zeitraum verfügbar";
+
+
+    // Chart neu zeichnen
+    tempChartInstance.update();
+
 
 } catch (error) {
-console.error("Fehler beim Aktualisieren des Charts:", error);
-// Fehlermeldung im Graphen anzeigen
-tempChartInstance.options.plugins.title.text = "Daten konnten nicht geladen werden";
-tempChartInstance.options.plugins.title.display = true;
-tempChartInstance.update();
+    console.error("Fehler beim Aktualisieren des Charts:", error);
+    // Fehlermeldung im Graphen anzeigen
+    tempChartInstance.options.plugins.title.text = "Daten konnten nicht geladen werden";
+    tempChartInstance.options.plugins.title.display = true;
+    tempChartInstance.update();
 }
 }
 
@@ -280,17 +312,84 @@ display: false
 });
 }
 
-// Wenn das gesamte Dokument geladen ist, initialisiere den Chart
+// --- LÜFTER STEUERUNG FUNKTIONALITÄT ---
+
+// Lädt die Log-Einträge neu
+async function loadLuefterLogs() {
+    const logOutput = document.getElementById('luefter-log-output');
+    try {
+        const response = await fetch('/api/luefter_logs');
+        if (!response.ok) {
+            throw new Error(`Server-Fehler: ${response.status}`);
+        }
+        const logs = await response.json();
+        
+        let logText = '';
+        if (logs.length === 0) {
+            logText = "Keine Protokolle gefunden.";
+        } else {
+            logs.forEach(log => {
+                // Formatiert: [Timestamp] [STATUS] ACTION
+                logText += `${log.timestamp} [${log.status}] ${log.action}\n`;
+            });
+        }
+        logOutput.textContent = logText;
+    } catch (error) {
+        console.error("Fehler beim Laden der Logs:", error);
+        logOutput.textContent = `Fehler: Logs konnten nicht geladen werden. (${error.message})`;
+    }
+}
+
+// Behandelt das Speichern der Cron-Minuten
+document.getElementById('luefter-settings-form').addEventListener('submit', async function(e) {
+    e.preventDefault();
+    
+    const statusElement = document.getElementById('settings-status');
+    statusElement.textContent = 'Speichere und aktualisiere Cronjobs...';
+    statusElement.style.color = '#fb923c';
+
+    const formData = new FormData(this);
+    const onMinutes = formData.get('on_minutes').trim();
+    const offMinutes = formData.get('off_minutes').trim();
+
+    try {
+        const response = await fetch('/api/luefter_settings', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ on_minutes: onMinutes, off_minutes: offMinutes })
+        });
+        
+        const result = await response.json();
+
+        if (response.ok) {
+            statusElement.textContent = result.message;
+            statusElement.style.color = '#4ade80';
+        } else {
+            statusElement.textContent = `Fehler: ${result.error}`;
+            statusElement.style.color = '#f87171';
+        }
+    } catch (error) {
+        console.error("Fehler beim Speichern der Einstellungen:", error);
+        statusElement.textContent = 'Netzwerkfehler beim Speichern der Einstellungen.';
+        statusElement.style.color = '#f87171';
+    }
+});
+
+
+// --- INITIALISIERUNG ---
+
 document.addEventListener("DOMContentLoaded", () => {
 initializeChart();
 // Lade die Standard-Daten (24h)
 updateChart(24);
+// Lade die initialen Logs
+loadLuefterLogs();
 });
 
 </script>
 
 <style>
-/* Styling für Buttons und Widgets im dunklen Design /
+/* Styling für Buttons und Widgets im dunklen Design */
 .widget-header {
 display: flex;
 justify-content: space-between;
@@ -300,16 +399,18 @@ margin-bottom: 1rem;
 .btn-timeframe {
 padding: 0.3rem 0.75rem;
 border-radius: 6px;
-background-color: #3f3f46; / Gray 700 /
+background-color: #3f3f46; /* Gray 700 */
 color: #e5e7eb;
 font-size: 0.875rem;
 transition: background-color 0.15s;
+border: none;
+cursor: pointer;
 }
 .btn-timeframe:hover {
-background-color: #52525b; / Gray 600 /
+background-color: #52525b; /* Gray 600 */
 }
 .btn-timeframe.active {
-background-color: #fb923c; / Orange 500 /
+background-color: #fb923c; /* Orange 500 */
 color: #fff;
 font-weight: bold;
 }
@@ -320,7 +421,7 @@ box-shadow: 0 4px 10px rgba(0, 0, 0, 0.4);
 padding: 1.5rem;
 margin-bottom: 1.5rem;
 }
-/ Grid für die Datenkarten */
+/* Grid für die Datenkarten */
 .data-section-grid {
 display: grid;
 grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
@@ -347,6 +448,7 @@ font-size: 0.875rem;
 font-size: 1.75rem;
 font-weight: 700;
 margin-top: 0.25rem;
+color: #fff;
 }
 .camera-section img {
 width: 100%;
@@ -358,6 +460,49 @@ box-shadow: 0 2px 4px rgba(0, 0, 0, 0.5);
 margin-top: 1rem;
 display: flex;
 gap: 1rem;
+}
+.button {
+padding: 0.75rem 1.25rem;
+border-radius: 6px;
+font-weight: 600;
+cursor: pointer;
+transition: background-color 0.2s;
+background-color: #10b981;
+color: #fff;
+text-decoration: none;
+border: none;
+text-align: center;
+display: inline-flex;
+align-items: center;
+gap: 0.5rem;
+}
+.button-secondary {
+background-color: #3b82f6;
+}
+.button:hover {
+opacity: 0.9;
+}
+.input-group {
+    margin-bottom: 10px;
+}
+.input-group label {
+    display: block;
+    margin-bottom: 5px;
+    font-size: 0.9rem;
+    color: #a1a1aa;
+}
+.input-group input[type="text"] {
+    width: 100%;
+    padding: 8px;
+    border-radius: 4px;
+    border: 1px solid #52525b;
+    background-color: #3f3f46;
+    color: #e5e7eb;
+    box-sizing: border-box;
+}
+.button-small {
+    padding: 0.5rem 1rem;
+    font-size: 0.8rem;
 }
 </style>
 
