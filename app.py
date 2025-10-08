@@ -171,21 +171,49 @@ def read_temp_raw():
     """Liest die Rohdaten vom Sensor."""
     try:
         if not device_file: find_ds18b20()
-        with open(device_file, 'r') as f: return f.readlines()
-    except Exception: return None
+        # Prüfe, ob die Datei existiert und nicht leer ist, bevor sie geöffnet wird
+        if os.path.exists(device_file):
+            with open(device_file, 'r') as f:
+                lines = f.readlines()
+                # WICHTIG: Prüfe, ob die Liste leer ist
+                if not lines:
+                    return None
+                return lines
+        return None
+    except Exception as e:
+        print(f"WARNUNG: Fehler beim Lesen der Sensor-Rohdaten: {e}")
+        return None
 
 def read_temp():
     """Konvertiert die Rohdaten in Celsius."""
     lines = read_temp_raw()
+    
+    # KORRIGIERT: Fängt ab, wenn keine Daten gelesen werden konnten
     if lines is None: return "N/A"
+
+    # Robustheit: Prüft, ob die erste Zeile existiert, bevor darauf zugegriffen wird
+    if not lines or len(lines) < 2:
+        return "N/A"
+
+    # Stellt sicher, dass die CRC-Prüfung "YES" liefert (mit Wiederholung)
+    attempts = 0
     while lines[0].strip()[-3:] != 'YES':
+        attempts += 1
+        if attempts > 3: # Begrenzt die Versuche
+            return "N/A" 
         time.sleep(0.2)
         lines = read_temp_raw()
-        if lines is None: return "N/A"
+        if lines is None or len(lines) < 2: 
+             return "N/A"
+
     equals_pos = lines[1].find('t=')
     if equals_pos != -1:
         temp_string = lines[1][equals_pos+2:]
-        return round(float(temp_string) / 1000.0, 2)
+        try:
+            temp_c = float(temp_string) / 1000.0
+            return round(temp_c, 2)
+        except ValueError:
+             return "N/A" # Wenn die Konvertierung fehlschlägt
     return "N/A"
 
 
