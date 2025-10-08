@@ -17,7 +17,7 @@ CAMERA_ENTITY_ID = "camera.growzelt"
 # --- PFAD KONFIGURATION ---
 # -------------------------
 # Ordner, in dem alle Fotos (Archiv und Live-Bild) gespeichert werden
-PHOTO_DIR = "/home/pi/growbox_photos"
+PHOTO_DIR = "/home/pi/growbox_monitor/growbox_photos"
 
 # Dateiname für das aktuelle Live-Bild (wird ständig überschrieben)
 LATEST_PHOTO_PATH = os.path.join(PHOTO_DIR, 'latest_photo.jpg')
