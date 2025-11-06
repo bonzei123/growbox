@@ -7,7 +7,7 @@ import os
 # --- KONFIGURATION ---
 DB_NAME = os.path.join(os.path.dirname(__file__), 'growbox_data.db')
 HA_URL = "http://192.168.0.167:8123"
-HA_TOKEN = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiIyOWE3YmRhZDJlOTY0NzEzYTI4MmU1ZDM4OTU4YTIzOCIsImlhdCI6MTc1OTI2NjI3NiwiZXhwIjoyMDc0NjI2Mjc2fQ.ozfMbYAhcEOFvy-2zRKADr8Bq0XnI22_1jGVMsY6EQw"
+HA_TOKEN = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiI1M2EyMGI0YTNkOWM0OGQxYTRmNmYwZjMwNmE2OTZjZCIsImlhdCI6MTc2MDI5MDIxMSwiZXhwIjoyMDc1NjUwMjExfQ.knUISv46SyXVX18vA0n4bwzWBk1QXmFy5Id7LNm0AKA"
 DEVICE_ENTITY_ID = "switch.grow_luftung_socket_1"  # ANPASSEN: ID für Ihren Lüfter
 
 

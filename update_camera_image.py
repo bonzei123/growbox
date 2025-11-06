@@ -10,7 +10,7 @@ import shutil
 HA_URL = "http://192.168.0.167:8123" 
 # 2. Ihr langes Home Assistant-Lebensdauer-Token (siehe HA-Profil)
 #    !!! BITTE HIER IHREN KOPIERTEN TOKEN EINFÜGEN !!!
-HA_TOKEN = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiIyOWE3YmRhZDJlOTY0NzEzYTI4MmU1ZDM4OTU4YTIzOCIsImlhdCI6MTc1OTI2NjI3NiwiZXhwIjoyMDc0NjI2Mjc2fQ.ozfMbYAhcEOFvy-2zRKADr8Bq0XnI22_1jGVMsY6EQw" # Beispiel für einen eingefügten Token
+HA_TOKEN = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiI1M2EyMGI0YTNkOWM0OGQxYTRmNmYwZjMwNmE2OTZjZCIsImlhdCI6MTc2MDI5MDIxMSwiZXhwIjoyMDc1NjUwMjExfQ.knUISv46SyXVX18vA0n4bwzWBk1QXmFy5Id7LNm0AKA" # Beispiel für einen eingefügten Token
 # 3. Die Entitäts-ID Ihrer Kamera in Home Assistant (z.B. camera.growzelt)
 CAMERA_ENTITY_ID = "camera.growzelt" 
 
