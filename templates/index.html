@@ -7,6 +7,7 @@
 <!-- Chart.js und SortableJS für die Dashboard-Funktionalität -->
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns@3.0.0/dist/chartjs-adapter-date-fns.bundle.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.0/Sortable.min.js"></script>
 
 {% endblock %}
 
@@ -241,6 +242,51 @@
 </div>
 </div>
 
+<!-- Modal für Pflanzenverwaltung -->
+<div id="plant-manager-modal" style="display: none; position: fixed; z-index: 1000; left: 0; top: 0; width: 100%; height: 100%; overflow: auto; background-color: rgba(0,0,0,0.7);">
+    <div class="modal-content" style="background-color: #2a2a2a; margin: 5% auto; padding: 20px; border: 1px solid #555; width: 80%; max-width: 700px; border-radius: 12px;">
+        <span class="close-button" onclick="closePlantManager()" style="color: #aaa; float: right; font-size: 28px; font-weight: bold; cursor: pointer;">&times;</span>
+        <h2 style="color: #6ee7b7; border-bottom: 1px solid #333; padding-bottom: 10px; margin-bottom: 20px;"><i class="fas fa-seedling"></i> Pflanzenverwaltung</h2>
+
+        <!-- Formular zum Hinzufügen einer neuen Pflanze -->
+        <div style="border: 1px solid #333; padding: 15px; border-radius: 8px; margin-bottom: 20px;">
+            <h3 style="color: #fb923c; margin-top: 0;"><i class="fas fa-plus-circle"></i> Neue Pflanze hinzufügen</h3>
+            <form id="add-plant-form" class="data-section-grid" style="grid-template-columns: repeat(2, 1fr); gap: 1rem;">
+                <div class="input-group">
+                    <label for="new-plant-name">Name der Pflanze:</label>
+                    <input type="text" id="new-plant-name" name="name" required>
+                </div>
+                <div class="input-group">
+                    <label for="new-strain">Sorte (Strain):</label>
+                    <input type="text" id="new-strain" name="strain" required>
+                </div>
+                <div class="input-group">
+                    <label for="new-type">Samenart:</label>
+                    <select id="new-type" name="type" required>
+                        <option value="P">Photoperiodisch (P)</option>
+                        <option value="F">Feminisiert (F)</option>
+                        <option value="A">Automatik (A)</option>
+                    </select>
+                </div>
+                <div class="input-group">
+                    <label for="new-keim-date">Keimdatum:</label>
+                    <input type="date" id="new-keim-date" name="keim_date" required>
+                </div>
+                <div style="grid-column: span 2;">
+                    <button type="submit" class="button" style="background-color: #10b981;"><i class="fas fa-plus"></i> Pflanze hinzufügen</button>
+                    <p id="plant-add-status" style="margin-top: 10px;"></p>
+                </div>
+            </form>
+        </div>
+
+        <!-- Liste der vorhandenen Pflanzen -->
+        <h3 style="color: #fb923c;"><i class="fas fa-list"></i> Vorhandene Pflanzen</h3>
+        <div id="current-plants-list">
+            <p style="color: #9ca3af;">Lade Pflanzenliste...</p>
+        </div>
+    </div>
+</div>
+
 {% endblock %}
 
 {% block scripts %}
@@ -260,18 +306,21 @@ fontColor: "#e5e7eb" // Helle Schrift
 // --- HILFSFUNKTIONEN ---
 
 function getDaysSince(dateString) {
+    // Berechnet die Tage seit dem Keimdatum
     const today = new Date();
-    const targetDate = new Date(dateString);
-    if (isNaN(targetDate)) return null;
+    // Achtung: Das Keimdatum muss als YYYY-MM-DD übergeben werden, um Probleme zu vermeiden
+    const targetDate = new Date(dateString + 'T00:00:00');
 
-    const diffTime = Math.abs(today - targetDate);
+    if (isNaN(targetDate.getTime()) || targetDate > today) return 0;
+
+    const diffTime = Math.abs(today.getTime() - targetDate.getTime());
     const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
     return diffDays;
 }
 
-// --- CHART FUNKTIONALITÄT ---
+// ... (CHART FUNKTIONALITÄT, LÜFTER STEUERUNG FUNKTIONALITÄT unverändert) ...
 
-// ... (updateChart und initializeChart Funktionen wie zuvor) ...
+// --- CHART FUNKTIONALITÄT ---
 
 // Diese Funktion wird aufgerufen, wenn ein Zeit-Button geklickt wird
 async function updateChart(hours) {
@@ -367,9 +416,7 @@ function initializeChart() {
 }
 
 
-// --- LÜFTER STEUERUNG FUNKTIONALITÄT ---
-
-// ... (loadLuefterLogs, toggleLuefter, luefter-settings-form Event Listener wie zuvor) ...
+// --- LÜFTER STEUERUNG FUNKTIONALITÄT (Unverändert) ---
 
 // Lädt die Log-Einträge neu
 async function loadLuefterLogs() {
@@ -395,7 +442,7 @@ async function toggleLuefter(command) {
     const statusDisplay = document.getElementById('luefter-status-display');
     const oldText = statusDisplay.textContent;
     statusDisplay.textContent = `Schalte ${command.toUpperCase()}...`;
-    statusDisplay.style.backgroundColor = '#fb923c';
+    statusDisplay.style.backgroundColor = '#fb923c'; // Orange während des Schaltens
 
     try {
         const response = await fetch('/api/luefter_toggle', {
@@ -412,14 +459,16 @@ async function toggleLuefter(command) {
             statusDisplay.style.backgroundColor = command === 'on' ? '#10b981' : '#f87171';
             loadLuefterLogs();
         } else {
-            alert(`Fehler beim Schalten: ${result.error || 'Unbekannter Fehler'}`);
+            // alert wurde auf console.error geändert
+            console.error(`Fehler beim Schalten: ${result.error || 'Unbekannter Fehler'}`);
             statusDisplay.textContent = oldText;
             statusDisplay.style.backgroundColor = oldText.includes('AN') ? '#10b981' : '#f87171';
         }
 
     } catch (error) {
         console.error("Netzwerkfehler beim Schalten:", error);
-        alert('Netzwerkfehler: Gerät konnte nicht geschaltet werden.');
+        // alert wurde auf console.error geändert
+        console.error('Netzwerkfehler: Gerät konnte nicht geschaltet werden.');
         statusDisplay.textContent = oldText;
         statusDisplay.style.backgroundColor = oldText.includes('AN') ? '#10b981' : '#f87171';
     }
@@ -476,28 +525,35 @@ function renderJournalEntries(entries, plantName) {
         return;
     }
 
+    // Holen des Keimdatums aus dem Dropdown
+    const selectedOption = document.getElementById('plant-select').options[document.getElementById('plant-select').selectedIndex];
+    const keimDate = selectedOption.getAttribute('data-keimdate');
+
     entries.forEach(entry => {
+        // Obwohl das Journal das Alter speichern sollte, nutzen wir hier das aktuelle Alter der Pflanze
+        const days = getDaysSince(keimDate);
+        const weeks = Math.floor(days / 7);
+
         const card = document.createElement('div');
         card.className = 'journal-entry-card';
         card.style.cssText = 'display: flex; gap: 1rem; margin-bottom: 1rem; background-color: #1f1f1f; padding: 1rem; border-radius: 8px; border-left: 5px solid #6ee7b7;';
 
-        // Berechne das Alter in Tagen und Wochen
-        const selectedOption = document.getElementById('plant-select').options[document.getElementById('plant-select').selectedIndex];
-        const keimDate = selectedOption.getAttribute('data-keimdate');
-        const days = getDaysSince(keimDate);
-        const weeks = Math.floor(days / 7);
-
         // Bild-Thumbnail
-        const imageHtml = entry.image_path
-            ? `<img src="{{ url_for('latest_photo') }}?name=${entry.image_path}" style="width: 80px; height: 80px; object-fit: cover; border-radius: 4px; flex-shrink: 0;" onerror="this.onerror=null;this.src='https://placehold.co/80x80/3f3f46/9ca3af?text=Kein+Bild';" alt="Tagebuch Foto">`
-            : `<div style="width: 80px; height: 80px; background-color: #3f3f46; border-radius: 4px; display: flex; align-items: center; justify-content: center; color: #9ca3af; font-size: 0.7rem;">Foto fehlt</div>`;
+        // Nutzt den Query-Parameter 'name' um das Archivbild abzurufen
+        const imagePath = entry.image_path ? `/latest_photo?name=${entry.image_path}` : 'https://placehold.co/80x80/3f3f46/9ca3af?text=Kein+Bild';
+
+        const imageHtml = `
+            <img src="${imagePath}"
+                 style="width: 80px; height: 80px; object-fit: cover; border-radius: 4px; flex-shrink: 0;"
+                 onerror="this.onerror=null;this.src='https://placehold.co/80x80/3f3f46/9ca3af?text=Kein+Bild';"
+                 alt="Tagebuch Foto">`;
 
         // Inhalt
         card.innerHTML = `
             ${imageHtml}
             <div style="flex-grow: 1;">
                 <p style="font-size: 0.8rem; color: #9ca3af; margin-bottom: 0.3rem;">
-                    ${entry.timestamp.split(' ')[0]} | Zyklus: <span style="font-weight: bold; color: #4ade80;">${entry.cycle}</span>
+                    ${entry.timestamp.split(' ')[0]} (Tag ${days}) | Zyklus: <span style="font-weight: bold; color: #4ade80;">${entry.cycle}</span>
                 </p>
                 <p style="font-size: 1rem; margin-bottom: 0.5rem;">${entry.notes}</p>
             </div>
@@ -509,14 +565,16 @@ function renderJournalEntries(entries, plantName) {
 // Lädt die Chronologie, wenn eine Pflanze ausgewählt wird
 document.getElementById('plant-select').addEventListener('change', async function() {
     const plantId = this.value;
-    const plantName = this.options[this.selectedIndex].text.split('(')[0].trim();
+    const selectedOption = this.options[this.selectedIndex];
+    const plantName = selectedOption.text.split('(')[0].trim();
+    const keimDate = selectedOption.getAttribute('data-keimdate');
+
     const ageDisplay = document.getElementById('plant-age-display');
-    const inputContainer = document.getElementById('journal-input-form-container');
     const form = document.getElementById('journal-entry-form');
 
     if (!plantId) {
         ageDisplay.textContent = 'Pflanzenalter: Bitte Pflanze auswählen.';
-        inputContainer.style.display = 'none';
+        form.style.display = 'none';
         document.getElementById('journal-entries-container').innerHTML = `<p style="color: #9ca3af;">Wählen Sie eine Pflanze, um die Chronologie anzuzeigen.</p>`;
         document.getElementById('chronology-plant-name').textContent = '...';
         return;
@@ -525,7 +583,6 @@ document.getElementById('plant-select').addEventListener('change', async functio
     form.style.display = 'block';
 
     // Altersanzeige aktualisieren
-    const keimDate = this.options[this.selectedIndex].getAttribute('data-keimdate');
     const days = getDaysSince(keimDate);
     const weeks = Math.floor(days / 7);
     ageDisplay.textContent = `Pflanzenalter: ${weeks}. Woche / Tag ${days}`;
@@ -581,10 +638,94 @@ document.getElementById('journal-entry-form').addEventListener('submit', async f
     }
 });
 
+
+// --- PFLANZEN VERWALTUNG MODAL FUNKTIONALITÄT ---
+
+// Öffnet das Modal
 function openPlantManager() {
-    // Hier würde ein Modal-Fenster geöffnet, um Pflanzen hinzuzufügen/zu bearbeiten.
-    alert('Pflanzenverwaltung (Modal) muss noch implementiert werden! API-Endpunkte sind bereit.');
+    document.getElementById('plant-manager-modal').style.display = 'block';
+    loadPlantListForManager();
 }
+
+// Schließt das Modal
+function closePlantManager() {
+    document.getElementById('plant-manager-modal').style.display = 'none';
+}
+
+// Lädt die Liste der vorhandenen Pflanzen im Modal
+async function loadPlantListForManager() {
+    const listContainer = document.getElementById('current-plants-list');
+    listContainer.innerHTML = '<p style="color: #9ca3af;">Lade Pflanzen...</p>';
+
+    try {
+        const response = await fetch('/api/plants');
+        if (!response.ok) { throw new Error('Fehler beim Laden der Pflanzenliste.'); }
+        const plants = await response.json();
+
+        if (plants.length === 0) {
+            listContainer.innerHTML = '<p style="color: #fb923c;">Noch keine Pflanzen gespeichert.</p>';
+            return;
+        }
+
+        let html = '<ul style="list-style-type: none; padding: 0;">';
+        plants.forEach(p => {
+            const ageInfo = `(Tag ${getDaysSince(p.keim_date)}, Typ: ${p.type})`;
+            html += `
+                <li style="border-bottom: 1px solid #333; padding: 8px 0; display: flex; justify-content: space-between; align-items: center;">
+                    <span style="font-weight: bold; color: #fff;">${p.name}</span>
+                    <span style="color: #aaa; font-size: 0.9rem;">${p.strain} ${ageInfo}</span>
+                </li>`;
+            // ANMERKUNG: Lösch- und Bearbeiten-Funktionen müssten hier mit Buttons ergänzt werden.
+        });
+        html += '</ul>';
+        listContainer.innerHTML = html;
+
+    } catch (error) {
+        listContainer.innerHTML = `<p style="color: #f87171;">Fehler: ${error.message}</p>`;
+    }
+}
+
+// Behandelt das Hinzufügen einer neuen Pflanze
+document.getElementById('add-plant-form').addEventListener('submit', async function(e) {
+    e.preventDefault();
+    const statusElement = document.getElementById('plant-add-status');
+    statusElement.textContent = 'Speichere Pflanze...';
+    statusElement.style.color = '#fb923c';
+
+    const formData = {
+        name: document.getElementById('new-plant-name').value,
+        strain: document.getElementById('new-strain').value,
+        type: document.getElementById('new-type').value,
+        keim_date: document.getElementById('new-keim-date').value
+    };
+
+    try {
+        const response = await fetch('/api/plants', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(formData)
+        });
+
+        const result = await response.json();
+
+        if (response.ok) {
+            statusElement.textContent = result.message;
+            statusElement.style.color = '#4ade80';
+            this.reset(); // Formular leeren
+            loadPlantListForManager(); // Liste im Modal aktualisieren
+            // Aktualisiere das Haupt-Dropdown nach dem Schließen
+            window.location.reload();
+
+        } else {
+            statusElement.textContent = `Fehler: ${result.error}`;
+            statusElement.style.color = '#f87171';
+        }
+
+    } catch (error) {
+        statusElement.textContent = 'Netzwerkfehler beim Hinzufügen der Pflanze.';
+        statusElement.style.color = '#f87171';
+    }
+});
 
 
 // --- INITIALISIERUNG ---
@@ -702,7 +843,7 @@ opacity: 0.9;
     font-size: 0.9rem;
     color: #a1a1aa;
 }
-.input-group input[type="text"], .input-group select, .input-group textarea {
+.input-group input[type="text"], .input-group select, .input-group textarea, .input-group input[type="date"] {
     width: 100%;
     padding: 8px;
     border-radius: 4px;
@@ -720,6 +861,18 @@ opacity: 0.9;
 }
 .luefter-manual-control {
     border-bottom: 1px solid #333;
+}
+/* Modal Styling */
+.modal-content {
+    animation: fadeIn 0.3s;
+}
+@keyframes fadeIn {
+    from {opacity: 0; transform: translateY(-50px);}
+    to {opacity: 1; transform: translateY(0);}
+}
+/* Zusätzliches Styling für das Grid im Modal */
+.data-section-grid {
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
 }
 </style>
 {% endblock %}
