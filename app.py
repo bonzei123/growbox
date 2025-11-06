@@ -6,6 +6,7 @@ import subprocess
 import time
 import sqlite3
 import requests
+import shutil
 import re
 from datetime import timedelta
 from math import floor  # Für die Altersberechnung
