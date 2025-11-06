@@ -59,7 +59,7 @@
 </div>
 </div>
 
-<!-- Pumpensteuerung Widget (enthält jetzt pH, EC und Pumpen-Status) -->
+<!-- Pumpensteuerung Widget (enthält pH, EC und Pumpen-Status) -->
 
 <div class="widget" id="pumps-widget">
 <h2 style="color: #6ee7b7;"><i class="fas fa-pump"></i> Pumpensteuerung</h2>
@@ -99,13 +99,13 @@
 <div class="widget" id="luefter-widget">
 <h2 style="color: #6ee7b7;"><i class="fas fa-fan"></i> Lüftersteuerung und Protokoll</h2>
 <div class="luefter-content">
-    
+
     <!-- Manueller Status und Steuerung -->
     <div class="luefter-manual-control" style="margin-bottom: 2rem; padding-bottom: 1rem; border-bottom: 1px solid #333;">
         <h3><i class="fas fa-power-off"></i> Manueller Status</h3>
         <div style="display: flex; align-items: center; gap: 1.5rem; margin-top: 10px;">
             <!-- Statusanzeige -->
-            <div id="luefter-status-display" style="font-size: 1.2rem; font-weight: bold; padding: 5px 10px; border-radius: 4px; color: #fff; background-color: {{ '#10b981' if luefter_state == 'on' else '#f87171' }}">
+            <div id="luefter-status-display" style="font-size: 1.2rem; font-weight: bold; padding: 5px 10px; border-radius: 4px; color: #fff; background-color: {{ 'on' == luefter_state ? '#10b981' : '#f87171' }}">
                 Status: {{ 'AN' if luefter_state == 'on' else 'AUS' }}
             </div>
 
@@ -146,6 +146,64 @@
         <button onclick="loadLuefterLogs()" class="button button-secondary button-small" style="margin-top: 10px;"><i class="fas fa-sync"></i> Logs aktualisieren</button>
     </div>
 </div>
+</div>
+
+<!-- NEU: Grow-Tagebuch Widget -->
+<div class="widget" id="journal-widget">
+<h2 style="color: #6ee7b7;"><i class="fas fa-book-open"></i> Grow-Tagebuch</h2>
+<div class="journal-controls">
+    <div style="display: flex; gap: 1rem; align-items: center; margin-bottom: 1rem;">
+        <label for="plant-select" style="color: #a1a1aa; font-weight: 600;">Pflanze wählen:</label>
+        <select id="plant-select" class="input-field" style="padding: 8px; border-radius: 4px; background-color: #3f3f46; color: #e5e7eb; border: 1px solid #52525b; flex-grow: 1;">
+            <option value="">-- Pflanze auswählen --</option>
+            {% for plant in plants %}
+            <option value="{{ plant.id }}" data-keimdate="{{ plant.keim_date }}">
+                {{ plant.name }} (Tag {{ plant.age_days }})
+            </option>
+            {% endfor %}
+        </select>
+        <button onclick="openPlantManager()" class="button button-secondary button-small"><i class="fas fa-seedling"></i> Pflanzen verwalten</button>
+    </div>
+
+    <!-- Altersanzeige (wird per JS befüllt) -->
+    <p id="plant-age-display" style="font-size: 1.1rem; font-weight: bold; color: #fb923c;">Pflanzenalter: Bitte Pflanze auswählen.</p>
+
+</div>
+<!-- Eingabeformular für neue Einträge -->
+<div id="journal-input-form-container" style="margin-top: 1.5rem; border-top: 1px solid #333; padding-top: 1.5rem;">
+    <h3><i class="fas fa-pen"></i> Neuen Eintrag erstellen</h3>
+    <form id="journal-entry-form" style="display: none;">
+        <div class="data-section-grid" style="grid-template-columns: 1fr 1fr; gap: 1rem; margin-bottom: 1rem;">
+            <div class="input-group">
+                <label for="journal-cycle">Aktueller Zyklus:</label>
+                <select id="journal-cycle" name="cycle" class="input-field" required>
+                    <option value="Keimling">Keimling</option>
+                    <option value="Vegetation">Vegetation</option>
+                    <option value="Blüte">Blüte</option>
+                </select>
+            </div>
+            <div class="input-group">
+                <label>Dokumentation:</label>
+                <p style="color: #a1a1aa; font-size: 0.9rem;">Aktuelles Kamerabild wird automatisch archiviert.</p>
+            </div>
+        </div>
+        <div class="input-group">
+            <label for="journal-notes">Notizen zum Zustand (max. 500 Zeichen):</label>
+            <textarea id="journal-notes" name="notes" rows="4" maxlength="500" required></textarea>
+        </div>
+        <button type="submit" class="button"><i class="fas fa-save"></i> Eintrag speichern & Foto archivieren</button>
+        <p id="journal-status" style="margin-top: 10px;"></p>
+    </form>
+</div>
+
+<!-- Chronologie-Anzeige -->
+<div id="journal-chronology" style="margin-top: 2rem;">
+    <h3><i class="fas fa-history"></i> Chronologie (<span id="chronology-plant-name">...</span>)</h3>
+    <div id="journal-entries-container">
+        <p style="color: #9ca3af;">Wählen Sie eine Pflanze, um die Chronologie anzuzeigen.</p>
+    </div>
+</div>
+
 </div>
 
 
@@ -199,160 +257,131 @@ gridLine: "rgba(255, 255, 255, 0.1)", // Helle, transparente Gitterlinien
 fontColor: "#e5e7eb" // Helle Schrift
 };
 
+// --- HILFSFUNKTIONEN ---
+
+function getDaysSince(dateString) {
+    const today = new Date();
+    const targetDate = new Date(dateString);
+    if (isNaN(targetDate)) return null;
+
+    const diffTime = Math.abs(today - targetDate);
+    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+    return diffDays;
+}
+
 // --- CHART FUNKTIONALITÄT ---
+
+// ... (updateChart und initializeChart Funktionen wie zuvor) ...
 
 // Diese Funktion wird aufgerufen, wenn ein Zeit-Button geklickt wird
 async function updateChart(hours) {
-console.log(`Lade Daten für die letzten ${hours} Stunden...`);
+    console.log(`Lade Daten für die letzten ${hours} Stunden...`);
 
-// Aktiven Button-Stil aktualisieren
-document.querySelectorAll(".btn-timeframe").forEach(button => {
-    const buttonHours = parseInt(button.getAttribute("onclick").match(/(\d+)/)[1]);
-    if (buttonHours === hours) {
-        button.classList.add("active");
-    } else {
-        button.classList.remove("active");
+    // Aktiven Button-Stil aktualisieren
+    document.querySelectorAll(".btn-timeframe").forEach(button => {
+        const buttonHours = parseInt(button.getAttribute("onclick").match(/(\d+)/)[1]);
+        if (buttonHours === hours) {
+            button.classList.add("active");
+        } else {
+            button.classList.remove("active");
+        }
+    });
+
+    try {
+        const response = await fetch(`/api/temperature_data?hours=${hours}`);
+        if (!response.ok) {
+            throw new Error(`Server-Fehler: ${response.status}`);
+        }
+        const data = await response.json();
+
+        tempChartInstance.data.labels = data.labels;
+        tempChartInstance.data.datasets[0].data = data.values;
+
+        let timeUnit = "hour";
+        if (hours > 72) { timeUnit = "day"; } else if (hours < 3) { timeUnit = "minute"; }
+
+        tempChartInstance.options.scales.x.time.unit = timeUnit;
+        tempChartInstance.options.scales.x.time.displayFormats.hour = (timeUnit === "hour" || timeUnit === "minute") ? "HH:mm" : "dd.MM.";
+        tempChartInstance.options.scales.x.time.tooltipFormat = (timeUnit === "day") ? "dd.MM.yyyy" : "dd.MM.yyyy HH:mm";
+
+        const hasData = data.labels.length > 0;
+        tempChartInstance.options.plugins.title.display = !hasData;
+        tempChartInstance.options.plugins.title.text = hasData ? "" : "Keine Daten für diesen Zeitraum verfügbar";
+
+        tempChartInstance.update();
+
+    } catch (error) {
+        console.error("Fehler beim Aktualisieren des Charts:", error);
+        tempChartInstance.options.plugins.title.text = "Daten konnten nicht geladen werden";
+        tempChartInstance.options.plugins.title.display = true;
+        tempChartInstance.update();
     }
-});
-
-try {
-    const response = await fetch(`/api/temperature_data?hours=${hours}`);
-    if (!response.ok) {
-        throw new Error(`Server-Fehler: ${response.status}`);
-    }
-    const data = await response.json();
-
-
-    // Die Daten im Chart aktualisieren
-    tempChartInstance.data.labels = data.labels;
-    tempChartInstance.data.datasets[0].data = data.values;
-
-    // Konfiguriert die Zeiteinheit dynamisch
-    let timeUnit = "hour";
-    if (hours > 72) { // Mehr als 3 Tage
-        timeUnit = "day";
-    } else if (hours < 3) { // Weniger als 3 Stunden
-        timeUnit = "minute";
-    }
-
-    tempChartInstance.options.scales.x.time.unit = timeUnit;
-    tempChartInstance.options.scales.x.time.displayFormats.hour = (timeUnit === "hour" || timeUnit === "minute") ? "HH:mm" : "dd.MM.";
-    tempChartInstance.options.scales.x.time.tooltipFormat = (timeUnit === "day") ? "dd.MM.yyyy" : "dd.MM.yyyy HH:mm";
-
-
-    // Prüfen auf leere Daten
-    const hasData = data.labels.length > 0;
-    tempChartInstance.options.plugins.title.display = !hasData;
-    tempChartInstance.options.plugins.title.text = hasData ? "" : "Keine Daten für diesen Zeitraum verfügbar";
-
-
-    // Chart neu zeichnen
-    tempChartInstance.update();
-
-
-} catch (error) {
-    console.error("Fehler beim Aktualisieren des Charts:", error);
-    // Fehlermeldung im Graphen anzeigen
-    tempChartInstance.options.plugins.title.text = "Daten konnten nicht geladen werden";
-    tempChartInstance.options.plugins.title.display = true;
-    tempChartInstance.update();
-}
 }
 
 // Diese Funktion initialisiert den Chart, wenn die Seite geladen wird
 function initializeChart() {
-const ctx = document.getElementById("tempChart").getContext("2d");
-tempChartInstance = new Chart(ctx, {
-type: "line",
-data: {
-labels: [], // Startet mit leeren Daten
-datasets: [{
-label: "Temperatur",
-data: [], // Startet mit leeren Daten
-borderColor: chartColors.mainLine,
-backgroundColor: chartColors.fillArea,
-borderWidth: 2,
-tension: 0.3, // Macht die Linie etwas runder
-fill: true,
-pointRadius: 0 // Keine Punkte
-}]
-},
-options: {
-responsive: true,
-maintainAspectRatio: false,
-scales: {
-x: {
-type: "time", // Wichtig: Sagt Chart.js, dass die X-Achse Zeit ist
-time: {
-unit: "hour",
-tooltipFormat: "dd.MM.yyyy HH:mm",
-displayFormats: {
-hour: "HH:mm"
-}
-},
-ticks: {
-color: chartColors.fontColor
-},
-grid: {
-color: chartColors.gridLine
-},
-title: {
-display: true,
-text: "Uhrzeit",
-color: chartColors.fontColor
-}
-},
-y: {
-beginAtZero: false,
-ticks: {
-color: chartColors.fontColor
-},
-grid: {
-color: chartColors.gridLine
-},
-title: {
-display: true,
-text: "Temperatur (°C)",
-color: chartColors.fontColor
-}
-}
-},
-plugins: {
-title: {
-display: false,
-text: "",
-color: chartColors.fontColor,
-padding: { top: 10, bottom: 30 },
-font: { size: 16 }
-},
-legend: {
-display: false
-}
-}
-}
-});
+    const ctx = document.getElementById("tempChart").getContext("2d");
+    tempChartInstance = new Chart(ctx, {
+        type: "line",
+        data: {
+            labels: [],
+            datasets: [{
+                label: "Temperatur",
+                data: [],
+                borderColor: chartColors.mainLine,
+                backgroundColor: chartColors.fillArea,
+                borderWidth: 2,
+                tension: 0.3,
+                fill: true,
+                pointRadius: 0
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            scales: {
+                x: {
+                    type: "time",
+                    time: {
+                        unit: "hour",
+                        tooltipFormat: "dd.MM.yyyy HH:mm",
+                        displayFormats: { hour: "HH:mm" }
+                    },
+                    ticks: { color: chartColors.fontColor },
+                    grid: { color: chartColors.gridLine },
+                    title: { display: true, text: "Uhrzeit", color: chartColors.fontColor }
+                },
+                y: {
+                    beginAtZero: false,
+                    ticks: { color: chartColors.fontColor },
+                    grid: { color: chartColors.gridLine },
+                    title: { display: true, text: "Temperatur (°C)", color: chartColors.fontColor }
+                }
+            },
+            plugins: {
+                title: { display: false, text: "", color: chartColors.fontColor, padding: { top: 10, bottom: 30 }, font: { size: 16 } },
+                legend: { display: false }
+            }
+        }
+    });
 }
 
+
 // --- LÜFTER STEUERUNG FUNKTIONALITÄT ---
+
+// ... (loadLuefterLogs, toggleLuefter, luefter-settings-form Event Listener wie zuvor) ...
 
 // Lädt die Log-Einträge neu
 async function loadLuefterLogs() {
     const logOutput = document.getElementById('luefter-log-output');
     try {
         const response = await fetch('/api/luefter_logs');
-        if (!response.ok) {
-            throw new Error(`Server-Fehler: ${response.status}`);
-        }
+        if (!response.ok) { throw new Error(`Server-Fehler: ${response.status}`); }
         const logs = await response.json();
-        
+
         let logText = '';
-        if (logs.length === 0) {
-            logText = "Keine Protokolle gefunden.";
-        } else {
-            logs.forEach(log => {
-                // Formatiert: [Timestamp] [STATUS] ACTION
-                logText += `${log.timestamp} [${log.status}] ${log.action}\n`;
-            });
+        if (logs.length === 0) { logText = "Keine Protokolle gefunden."; } else {
+            logs.forEach(log => { logText += `${log.timestamp} [${log.status}] ${log.action}\n`; });
         }
         logOutput.textContent = logText;
     } catch (error) {
@@ -366,7 +395,7 @@ async function toggleLuefter(command) {
     const statusDisplay = document.getElementById('luefter-status-display');
     const oldText = statusDisplay.textContent;
     statusDisplay.textContent = `Schalte ${command.toUpperCase()}...`;
-    statusDisplay.style.backgroundColor = '#fb923c'; // Orange während des Schaltens
+    statusDisplay.style.backgroundColor = '#fb923c';
 
     try {
         const response = await fetch('/api/luefter_toggle', {
@@ -378,22 +407,20 @@ async function toggleLuefter(command) {
         const result = await response.json();
 
         if (response.ok) {
-            // Aktualisiere Statusanzeige
             const newState = command === 'on' ? 'AN' : 'AUS';
             statusDisplay.textContent = `Status: ${newState}`;
             statusDisplay.style.backgroundColor = command === 'on' ? '#10b981' : '#f87171';
-            // Lade die Logs neu, um den manuellen Schaltvorgang zu sehen
             loadLuefterLogs();
         } else {
             alert(`Fehler beim Schalten: ${result.error || 'Unbekannter Fehler'}`);
-            statusDisplay.textContent = oldText; // Zurück zum alten Zustand
+            statusDisplay.textContent = oldText;
             statusDisplay.style.backgroundColor = oldText.includes('AN') ? '#10b981' : '#f87171';
         }
 
     } catch (error) {
         console.error("Netzwerkfehler beim Schalten:", error);
         alert('Netzwerkfehler: Gerät konnte nicht geschaltet werden.');
-        statusDisplay.textContent = oldText; // Zurück zum alten Zustand
+        statusDisplay.textContent = oldText;
         statusDisplay.style.backgroundColor = oldText.includes('AN') ? '#10b981' : '#f87171';
     }
 }
@@ -402,7 +429,7 @@ async function toggleLuefter(command) {
 // Behandelt das Speichern der Cron-Minuten
 document.getElementById('luefter-settings-form').addEventListener('submit', async function(e) {
     e.preventDefault();
-    
+
     const statusElement = document.getElementById('settings-status');
     statusElement.textContent = 'Speichere und aktualisiere Cronjobs...';
     statusElement.style.color = '#fb923c';
@@ -417,7 +444,7 @@ document.getElementById('luefter-settings-form').addEventListener('submit', asyn
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ on_minutes: onMinutes, off_minutes: offMinutes })
         });
-        
+
         const result = await response.json();
 
         if (response.ok) {
@@ -433,6 +460,131 @@ document.getElementById('luefter-settings-form').addEventListener('submit', asyn
         statusElement.style.color = '#f87171';
     }
 });
+
+
+// --- TAGEBUCH FUNKTIONALITÄT ---
+
+// Rendert die Chronologie-Einträge
+function renderJournalEntries(entries, plantName) {
+    const container = document.getElementById('journal-entries-container');
+    const plantNameDisplay = document.getElementById('chronology-plant-name');
+    container.innerHTML = '';
+    plantNameDisplay.textContent = plantName;
+
+    if (entries.length === 0) {
+        container.innerHTML = `<p style="color: #9ca3af;">Noch keine Einträge für ${plantName} vorhanden.</p>`;
+        return;
+    }
+
+    entries.forEach(entry => {
+        const card = document.createElement('div');
+        card.className = 'journal-entry-card';
+        card.style.cssText = 'display: flex; gap: 1rem; margin-bottom: 1rem; background-color: #1f1f1f; padding: 1rem; border-radius: 8px; border-left: 5px solid #6ee7b7;';
+
+        // Berechne das Alter in Tagen und Wochen
+        const selectedOption = document.getElementById('plant-select').options[document.getElementById('plant-select').selectedIndex];
+        const keimDate = selectedOption.getAttribute('data-keimdate');
+        const days = getDaysSince(keimDate);
+        const weeks = Math.floor(days / 7);
+
+        // Bild-Thumbnail
+        const imageHtml = entry.image_path
+            ? `<img src="{{ url_for('latest_photo') }}?name=${entry.image_path}" style="width: 80px; height: 80px; object-fit: cover; border-radius: 4px; flex-shrink: 0;" onerror="this.onerror=null;this.src='https://placehold.co/80x80/3f3f46/9ca3af?text=Kein+Bild';" alt="Tagebuch Foto">`
+            : `<div style="width: 80px; height: 80px; background-color: #3f3f46; border-radius: 4px; display: flex; align-items: center; justify-content: center; color: #9ca3af; font-size: 0.7rem;">Foto fehlt</div>`;
+
+        // Inhalt
+        card.innerHTML = `
+            ${imageHtml}
+            <div style="flex-grow: 1;">
+                <p style="font-size: 0.8rem; color: #9ca3af; margin-bottom: 0.3rem;">
+                    ${entry.timestamp.split(' ')[0]} | Zyklus: <span style="font-weight: bold; color: #4ade80;">${entry.cycle}</span>
+                </p>
+                <p style="font-size: 1rem; margin-bottom: 0.5rem;">${entry.notes}</p>
+            </div>
+        `;
+        container.appendChild(card);
+    });
+}
+
+// Lädt die Chronologie, wenn eine Pflanze ausgewählt wird
+document.getElementById('plant-select').addEventListener('change', async function() {
+    const plantId = this.value;
+    const plantName = this.options[this.selectedIndex].text.split('(')[0].trim();
+    const ageDisplay = document.getElementById('plant-age-display');
+    const inputContainer = document.getElementById('journal-input-form-container');
+    const form = document.getElementById('journal-entry-form');
+
+    if (!plantId) {
+        ageDisplay.textContent = 'Pflanzenalter: Bitte Pflanze auswählen.';
+        inputContainer.style.display = 'none';
+        document.getElementById('journal-entries-container').innerHTML = `<p style="color: #9ca3af;">Wählen Sie eine Pflanze, um die Chronologie anzuzeigen.</p>`;
+        document.getElementById('chronology-plant-name').textContent = '...';
+        return;
+    }
+
+    form.style.display = 'block';
+
+    // Altersanzeige aktualisieren
+    const keimDate = this.options[this.selectedIndex].getAttribute('data-keimdate');
+    const days = getDaysSince(keimDate);
+    const weeks = Math.floor(days / 7);
+    ageDisplay.textContent = `Pflanzenalter: ${weeks}. Woche / Tag ${days}`;
+
+    // Chronologie laden
+    try {
+        const response = await fetch(`/api/journal/${plantId}`);
+        const entries = await response.json();
+        renderJournalEntries(entries, plantName);
+    } catch (error) {
+        console.error("Fehler beim Laden des Journals:", error);
+        document.getElementById('journal-entries-container').innerHTML = `<p style="color: #f87171;">Fehler beim Laden der Einträge.</p>`;
+    }
+});
+
+// Speichert den neuen Tagebucheintrag
+document.getElementById('journal-entry-form').addEventListener('submit', async function(e) {
+    e.preventDefault();
+
+    const plantSelect = document.getElementById('plant-select');
+    const plantId = plantSelect.value;
+    const notes = document.getElementById('journal-notes').value.trim();
+    const cycle = document.getElementById('journal-cycle').value;
+    const statusElement = document.getElementById('journal-status');
+
+    statusElement.textContent = 'Speichere Eintrag und Foto...';
+    statusElement.style.color = '#fb923c';
+
+    try {
+        const response = await fetch('/api/journal', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ plant_id: plantId, cycle: cycle, notes: notes })
+        });
+
+        const result = await response.json();
+
+        if (response.ok) {
+            statusElement.textContent = result.message;
+            statusElement.style.color = '#4ade80';
+            document.getElementById('journal-notes').value = ''; // Formular leeren
+            // Chronologie neu laden
+            plantSelect.dispatchEvent(new Event('change'));
+
+        } else {
+            statusElement.textContent = `Fehler: ${result.error}`;
+            statusElement.style.color = '#f87171';
+        }
+    } catch (error) {
+        console.error("Netzwerkfehler beim Speichern des Tagebuchs:", error);
+        statusElement.textContent = 'Netzwerkfehler beim Speichern des Tagebuchs.';
+        statusElement.style.color = '#f87171';
+    }
+});
+
+function openPlantManager() {
+    // Hier würde ein Modal-Fenster geöffnet, um Pflanzen hinzuzufügen/zu bearbeiten.
+    alert('Pflanzenverwaltung (Modal) muss noch implementiert werden! API-Endpunkte sind bereit.');
+}
 
 
 // --- INITIALISIERUNG ---
@@ -550,7 +702,7 @@ opacity: 0.9;
     font-size: 0.9rem;
     color: #a1a1aa;
 }
-.input-group input[type="text"] {
+.input-group input[type="text"], .input-group select, .input-group textarea {
     width: 100%;
     padding: 8px;
     border-radius: 4px;
@@ -559,9 +711,14 @@ opacity: 0.9;
     color: #e5e7eb;
     box-sizing: border-box;
 }
+.input-group textarea {
+    resize: vertical;
+}
 .button-small {
     padding: 0.5rem 1rem;
     font-size: 0.8rem;
 }
+.luefter-manual-control {
+    border-bottom: 1px solid #333;
+}
 </style>
-{% endblock %}
