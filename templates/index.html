@@ -311,11 +311,18 @@ function getDaysSince(dateString) {
     // Achtung: Das Keimdatum muss als YYYY-MM-DD übergeben werden, um Probleme zu vermeiden
     const targetDate = new Date(dateString + 'T00:00:00');
 
+    // Prüfe auf ungültiges Datum oder Datum in der Zukunft
     if (isNaN(targetDate.getTime()) || targetDate > today) return 0;
 
+    // Berechnung der vollen Millisekunden-Differenz
     const diffTime = Math.abs(today.getTime() - targetDate.getTime());
-    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-    return diffDays;
+
+    // Berechnung der vollen 24-Stunden-Perioden
+    // Die Berechnung wurde auf floor() umgestellt, da der Keimtag als Tag 1 gilt
+    const diffDays = Math.floor(diffTime / (1000 * 60 * 60 * 24));
+
+    // Gib die Tage zurück, wobei der Keimtag als Tag 1 gezählt wird (+1)
+    return diffDays + 1;
 }
 
 // ... (CHART FUNKTIONALITÄT, LÜFTER STEUERUNG FUNKTIONALITÄT unverändert) ...
