@@ -1,10 +1,14 @@
 /* Styling für Buttons und Widgets im dunklen Design */
+
+/* Additional widget header styling for index page */
 .widget-header {
     display: flex;
     justify-content: space-between;
     align-items: center;
     margin-bottom: 1rem;
 }
+
+/* Timeframe buttons for chart */
 .btn-timeframe {
     padding: 0.3rem 0.75rem;
     border-radius: 6px;
@@ -23,6 +27,8 @@
     color: #fff;
     font-weight: bold;
 }
+
+/* Index page overrides for .widget - more refined styling */
 .widget {
     background-color: #2a2a2a;
     border-radius: 12px;
@@ -30,12 +36,15 @@
     padding: 1.5rem;
     margin-bottom: 1.5rem;
 }
+
 /* Grid für die Datenkarten */
 .data-section-grid {
     display: grid;
     grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
     gap: 1rem;
 }
+
+/* Index page overrides for data cards - darker styling */
 .data-card-item {
     background-color: #1f1f1f;
     padding: 1rem;
@@ -59,6 +68,8 @@
     margin-top: 0.25rem;
     color: #fff;
 }
+
+/* Camera section styling */
 .camera-section img {
     width: 100%;
     height: auto;
@@ -70,6 +81,8 @@
     display: flex;
     gap: 1rem;
 }
+
+/* Button overrides for index page */
 .button {
     padding: 0.75rem 1.25rem;
     border-radius: 6px;
@@ -126,8 +139,4 @@
 @keyframes fadeIn {
     from {opacity: 0; transform: translateY(-50px);}
     to {opacity: 1; transform: translateY(0);}
-}
-/* Zusätzliches Styling für das Grid im Modal */
-.data-section-grid {
-    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
 }
