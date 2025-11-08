@@ -6,20 +6,22 @@ import subprocess
 import time
 import sqlite3
 import requests
-import shutil
 import re
+import shutil  # Neu: Für das Kopieren von Dateien beim Tagebuch-Eintrag
 from datetime import timedelta
-from math import floor  # Für die Altersberechnung
+from math import floor  # Neu: Für die Altersberechnung
 
 app = Flask(__name__)
 
 # --- Globale Konfigurationen ---
+# Pfad zum Ordner, in dem die App ausgeführt wird, um Skripte zu finden
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
 # --- Home Assistant API Konfiguration ---
+# WICHTIG: Ersetzen Sie diese Platzhalter durch Ihre echten Werte
 HA_CONFIG = {
     "HA_URL": "http://192.168.0.167:8123",
-    "HA_TOKEN": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiI1M2EyMGI0YTNkOWM0OGQxYTRmNmYwZjMwNmE2OTZjZCIsImlhdCI6MTc2MDI5MDIxMSwiZXhwIjoyMDc1NjUwMjExfQ.knUISv46SyXVX18vA0n4bwzWBk1QXmFy5Id7LNm0AKA",
+    "HA_TOKEN": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiIyOWE3YmRhZDJlOTY0NzEzYTI4MmU1ZDM4OTU4YTIzOCIsImlhdCI6MTc1OTI2NjI3NiwiZXhwIjoyMDc0NjI2Mjc2fQ.ozfMbYAhcEOFvy-2zRKADr8Bq0XnI22_1jGVMsY6EQw",
     "TEMP_ZELT_ENTITY": "sensor.growzeltdaten_temperature",
     "HUM_ZELT_ENTITY": "sensor.growzeltdaten_humidity",
     "LIGHT_POWER_ENTITY": "sensor.grow_licht_power",
@@ -142,20 +144,37 @@ def update_crontab(on_minutes, off_minutes):
 # --- Tagebuch Logik ---
 
 def get_plant_age(keim_date_str):
-    """Berechnet Alter in Tagen und Wochen."""
+    """Berechnet Alter in Tagen und Wochen, basierend auf dem Keimdatum."""
     try:
+        # Die Berechnung erfolgt nur ab dem Keimdatum
         keim_date = datetime.datetime.strptime(keim_date_str, '%Y-%m-%d').date()
         today = datetime.date.today()
 
         if today < keim_date:
             return 0, 0
 
+        # Die Anzahl der Tage, wobei der Keimtag als Tag 1 gezählt wird (+1)
         delta = today - keim_date
-        days = delta.days
+        days = delta.days + 1
         weeks = floor(days / 7)
         return days, weeks
     except ValueError:
         return 0, 0  # Ungültiges Datumsformat
+
+
+def get_last_cycle(plant_id):
+    """Ruft den zuletzt gespeicherten Zyklus für eine Pflanze ab."""
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    # Hole den Zyklus des neuesten Eintrags
+    cycle = cursor.execute(
+        "SELECT cycle FROM journal WHERE plant_id = ? ORDER BY timestamp DESC LIMIT 1",
+        (plant_id,)
+    ).fetchone()
+    conn.close()
+
+    # Rückgabe: 'Keimling' als Standard, falls kein Eintrag existiert
+    return cycle[0] if cycle else 'Keimling'
 
 
 # --- DS18B20 Logik (mit Fehlerbehebung) ---
@@ -223,10 +242,14 @@ def read_temp():
 @app.route('/latest_photo')
 def latest_photo():
     """Liefert das neueste Bild vom Dateisystem."""
-    if os.path.exists(LATEST_PHOTO_PATH):
-        return send_from_directory(PHOTO_DIR, 'latest_photo.jpg', mimetype='image/jpeg')
-    else:
+    # Fügt die Logik hinzu, um archivierte Bilder basierend auf dem 'name'-Parameter zu liefern
+    image_name = request.args.get('name', 'latest_photo.jpg')
+    if os.path.exists(os.path.join(PHOTO_DIR, image_name)):
+        return send_from_directory(PHOTO_DIR, image_name, mimetype='image/jpeg')
+    elif image_name == 'latest_photo.jpg':
         return "No image available. Run update_camera_image.py.", 503
+    else:
+        return "Archivbild nicht gefunden", 404
 
 
 # --- API Endpunkt für Temperaturdaten (Unverändert) ---
@@ -275,8 +298,9 @@ def get_temperature_data():
         if conn: conn.close()
 
 
-# --- API Endpunkt für Lüfter-Logs (Unverändert) ---
+# --- API Endpunkte (Lüfter, Unverändert) ---
 @app.route('/api/luefter_logs')
+# ... (Funktion bleibt unverändert) ...
 def get_luefter_logs():
     conn = None
     try:
@@ -300,8 +324,8 @@ def get_luefter_logs():
         if conn: conn.close()
 
 
-# --- API Endpunkt für Lüfter-Einstellungen (Unverändert) ---
 @app.route('/api/luefter_settings', methods=['POST'])
+# ... (Funktion bleibt unverändert) ...
 def save_luefter_settings():
     data = request.get_json()
     on_minutes = data.get('on_minutes', '').strip()
@@ -322,8 +346,8 @@ def save_luefter_settings():
         return jsonify({'error': message}), 500
 
 
-# --- API Endpunkt für manuelle Lüftersteuerung (Unverändert) ---
 @app.route('/api/luefter_toggle', methods=['POST'])
+# ... (Funktion bleibt unverändert) ...
 def luefter_toggle():
     command = request.get_json().get('command', '').lower()
 
@@ -364,12 +388,22 @@ def luefter_toggle():
 
 @app.route('/api/plants', methods=['GET'])
 def list_plants():
-    """Gibt alle aktiven Pflanzen zurück, um das Dropdown zu befüllen."""
+    """Gibt alle aktiven Pflanzen zurück."""
     conn = get_db_connection()
     cursor = conn.cursor()
-    cursor.execute("SELECT id, name, strain, type, keim_date FROM plants WHERE status='Active' ORDER BY name")
-    plants = [{'id': row[0], 'name': row[1], 'strain': row[2], 'type': row[3], 'keim_date': row[4]} for row in
-              cursor.fetchall()]
+    # NEU: Auch seed_date abrufen
+    cursor.execute(
+        "SELECT id, name, strain, type, keim_date, seed_date FROM plants WHERE status='Active' ORDER BY name")
+    plants = []
+    for row in cursor.fetchall():
+        plants.append({
+            'id': row[0],
+            'name': row[1],
+            'strain': row[2],
+            'type': row[3],
+            'keim_date': row[4],
+            'seed_date': row[5]
+        })
     conn.close()
     return jsonify(plants)
 
@@ -381,17 +415,19 @@ def add_plant():
     name = data.get('name')
     strain = data.get('strain')
     p_type = data.get('type')
-    keim_date = data.get('keim_date')  # YYYY-MM-DD
+    keim_date = data.get('keim_date')
+    seed_date = data.get('seed_date')  # NEU
 
-    if not all([name, strain, p_type, keim_date]):
-        return jsonify({'error': 'Name, Sorte, Typ und Keimdatum sind erforderlich.'}), 400
+    if not all([name, strain, p_type, keim_date, seed_date]):
+        return jsonify({'error': 'Name, Sorte, Typ, Keimdatum und Setzdatum sind erforderlich.'}), 400
 
     conn = get_db_connection()
     cursor = conn.cursor()
     try:
+        # NEU: seed_date in den INSERT-Befehl aufgenommen
         cursor.execute(
-            "INSERT INTO plants (name, strain, type, keim_date, status) VALUES (?, ?, ?, ?, 'Active')",
-            (name, strain, p_type, keim_date)
+            "INSERT INTO plants (name, strain, type, keim_date, seed_date, status) VALUES (?, ?, ?, ?, ?, 'Active')",
+            (name, strain, p_type, keim_date, seed_date)
         )
         conn.commit()
         return jsonify({'message': f'Pflanze "{name}" erfolgreich hinzugefügt.'}), 201
@@ -412,7 +448,6 @@ def get_journal(plant_id):
     )
     journal_entries = []
     for ts, cycle, notes, img_path in cursor.fetchall():
-        # Berechne das Pflanzenalter für diesen Journal-Eintrag (komplex, daher nur Datum anzeigen)
         journal_entries.append({
             'timestamp': datetime.datetime.fromisoformat(ts).strftime('%Y-%m-%d %H:%M:%S'),
             'cycle': cycle,
@@ -501,15 +536,18 @@ def index():
             })
 
         # 2. Pflanzenliste
+        # NEU: Abruf des letzten Zyklus
         cursor.execute("SELECT id, name, keim_date FROM plants WHERE status='Active' ORDER BY name")
         for p_id, name, keim_date in cursor.fetchall():
             days, weeks = get_plant_age(keim_date)
+            last_cycle = get_last_cycle(p_id)  # Holt den persistenten Zyklus
             plants_data.append({
                 'id': p_id,
                 'name': name,
                 'keim_date': keim_date,
                 'age_days': days,
-                'age_weeks': weeks
+                'age_weeks': weeks,
+                'last_cycle': last_cycle  # NEU: Für die Vorauswahl im Dropdown
             })
 
     except sqlite3.Error:
@@ -528,7 +566,7 @@ def index():
                            luefter_on_minutes=luefter_settings['on_minutes'],
                            luefter_off_minutes=luefter_settings['off_minutes'],
                            luefter_logs=luefter_logs,
-                           plants=plants_data)  # NEU: Liste der Pflanzen
+                           plants=plants_data)  # NEU: Liste der Pflanzen mit last_cycle
 
 
 @app.route('/create_timelapse', methods=['POST'])
@@ -565,30 +603,69 @@ def initialize_db_if_needed():
         "CREATE TABLE IF NOT EXISTS luefter_logs (id INTEGER PRIMARY KEY AUTOINCREMENT, timestamp TEXT NOT NULL, action TEXT NOT NULL, status TEXT NOT NULL)")
     cursor.execute("CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEXT NOT NULL)")
 
-    # 2. NEU: Pflanzen Tabelle
+    # 2. Pflanzen Tabelle
     cursor.execute("""
-        CREATE TABLE IF NOT EXISTS plants (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            name TEXT NOT NULL,
-            strain TEXT,
-            type TEXT, -- P/F/A
-            keim_date TEXT NOT NULL, -- YYYY-MM-DD
-            status TEXT NOT NULL -- Active/Archived
-        )
-    """)
+                   CREATE TABLE IF NOT EXISTS plants
+                   (
+                       id
+                       INTEGER
+                       PRIMARY
+                       KEY
+                       AUTOINCREMENT,
+                       name
+                       TEXT
+                       NOT
+                       NULL,
+                       strain
+                       TEXT,
+                       type
+                       TEXT, -- P/F/A
+                       keim_date
+                       TEXT
+                       NOT
+                       NULL, -- YYYY-MM-DD
+                       seed_date
+                       TEXT
+                       NOT
+                       NULL, -- NEU: YYYY-MM-DD (Datum des Setzens)
+                       status
+                       TEXT
+                       NOT
+                       NULL  -- Active/Archived
+                   )
+                   """)
 
-    # 3. NEU: Journal Tabelle
+    # 3. Journal Tabelle
     cursor.execute("""
-        CREATE TABLE IF NOT EXISTS journal (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            plant_id INTEGER,
-            timestamp TEXT NOT NULL,
-            cycle TEXT, -- Keimling, Vegetation, Blüte
-            notes TEXT,
-            image_path TEXT,
-            FOREIGN KEY (plant_id) REFERENCES plants(id)
-        )
-    """)
+                   CREATE TABLE IF NOT EXISTS journal
+                   (
+                       id
+                       INTEGER
+                       PRIMARY
+                       KEY
+                       AUTOINCREMENT,
+                       plant_id
+                       INTEGER,
+                       timestamp
+                       TEXT
+                       NOT
+                       NULL,
+                       cycle
+                       TEXT, -- Keimling, Vegetation, Blüte
+                       notes
+                       TEXT,
+                       image_path
+                       TEXT,
+                       FOREIGN
+                       KEY
+                   (
+                       plant_id
+                   ) REFERENCES plants
+                   (
+                       id
+                   )
+                       )
+                   """)
     conn.commit()
     conn.close()
 
