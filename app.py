@@ -7,9 +7,9 @@ import time
 import sqlite3
 import requests
 import re
-import shutil  # Neu: Für das Kopieren von Dateien beim Tagebuch-Eintrag
+import shutil # Neu: Für das Kopieren von Dateien beim Tagebuch-Eintrag
 from datetime import timedelta
-from math import floor  # Neu: Für die Altersberechnung
+from math import floor # Neu: Für die Altersberechnung
 
 app = Flask(__name__)
 
@@ -21,7 +21,7 @@ BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 # WICHTIG: Ersetzen Sie diese Platzhalter durch Ihre echten Werte
 HA_CONFIG = {
     "HA_URL": "http://192.168.0.167:8123",
-    "HA_TOKEN": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiI1M2EyMGI0YTNkOWM0OGQxYTRmNmYwZjMwNmE2OTZjZCIsImlhdCI6MTc2MDI5MDIxMSwiZXhwIjoyMDc1NjUwMjExfQ.knUISv46SyXVX18vA0n4bwzWBk1QXmFy5Id7LNm0AKA",
+    "HA_TOKEN": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiIyOWE3YmRhZDJlOTY0NzEzYTI4MmU1ZDM4OTU4YTIzOCIsImlhdCI6MTc1OTI2NjI3NiwiZXhwIjoyMDc0NjI2Mjc2fQ.ozfMbYAhcEOFvy-2zRKADr8Bq0XnI22_1jGVMsY6EQw",
     "TEMP_ZELT_ENTITY": "sensor.growzeltdaten_temperature",
     "HUM_ZELT_ENTITY": "sensor.growzeltdaten_humidity",
     "LIGHT_POWER_ENTITY": "sensor.grow_licht_power",
@@ -50,7 +50,6 @@ def get_db_connection():
     """Erstellt eine Datenbankverbindung."""
     return sqlite3.connect(DB_NAME)
 
-
 def get_ha_sensor_state(entity_id):
     """Ruft den Zustand eines Sensors von der Home Assistant API ab."""
     url = f"{HA_CONFIG['HA_URL']}/api/states/{entity_id}"
@@ -67,7 +66,6 @@ def get_ha_sensor_state(entity_id):
         print(f"Fehler beim Abruf von HA Sensor {entity_id}: {e}")
         return "N/A"
 
-
 def get_settings():
     """Lädt die aktuellen Lüfter-Cron-Einstellungen aus der DB."""
     conn = get_db_connection()
@@ -81,7 +79,6 @@ def get_settings():
         'off_minutes': off_minutes[0] if off_minutes else '5,25,45'
     }
 
-
 def save_setting(key, value):
     """Speichert einen Schlüssel/Wert-Paar in der settings Tabelle."""
     conn = get_db_connection()
@@ -89,7 +86,6 @@ def save_setting(key, value):
     cursor.execute("INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)", (key, value))
     conn.commit()
     conn.close()
-
 
 def update_crontab(on_minutes, off_minutes):
     """
@@ -140,7 +136,6 @@ def update_crontab(on_minutes, off_minutes):
         print(error_msg)
         return False, error_msg
 
-
 # --- Tagebuch Logik ---
 
 def get_plant_age(keim_date_str):
@@ -151,7 +146,7 @@ def get_plant_age(keim_date_str):
         today = datetime.date.today()
 
         if today < keim_date:
-            return 0, 0
+             return 0, 0
 
         # Die Anzahl der Tage, wobei der Keimtag als Tag 1 gezählt wird (+1)
         delta = today - keim_date
@@ -159,8 +154,7 @@ def get_plant_age(keim_date_str):
         weeks = floor(days / 7)
         return days, weeks
     except ValueError:
-        return 0, 0  # Ungültiges Datumsformat
-
+        return 0, 0 # Ungültiges Datumsformat
 
 def get_last_cycle(plant_id):
     """Ruft den zuletzt gespeicherten Zyklus für eine Pflanze ab."""
@@ -182,7 +176,6 @@ base_dir = '/sys/bus/w1/devices/'
 device_folder = ''
 device_file = ''
 
-
 def find_ds18b20():
     """Findet den Temperatursensor beim Start."""
     global device_folder, device_file
@@ -197,7 +190,6 @@ def find_ds18b20():
     except Exception:
         return False
 
-
 def read_temp_raw():
     """Liest die Rohdaten vom Sensor."""
     try:
@@ -211,7 +203,6 @@ def read_temp_raw():
     except Exception as e:
         print(f"WARNUNG: Fehler beim Lesen der Sensor-Rohdaten: {e}")
         return None
-
 
 def read_temp():
     """Konvertiert die Rohdaten in Celsius."""
@@ -229,12 +220,12 @@ def read_temp():
 
     equals_pos = lines[1].find('t=')
     if equals_pos != -1:
-        temp_string = lines[1][equals_pos + 2:]
+        temp_string = lines[1][equals_pos+2:]
         try:
             temp_c = float(temp_string) / 1000.0
             return round(temp_c, 2)
         except ValueError:
-            return "N/A"
+             return "N/A"
     return "N/A"
 
 
@@ -249,7 +240,7 @@ def latest_photo():
     elif image_name == 'latest_photo.jpg':
         return "No image available. Run update_camera_image.py.", 503
     else:
-        return "Archivbild nicht gefunden", 404
+         return "Archivbild nicht gefunden", 404
 
 
 # --- API Endpunkt für Temperaturdaten (Unverändert) ---
@@ -262,13 +253,11 @@ def get_temperature_data():
         hours = request.args.get('hours', type=int, default=24)
         time_ago = datetime.datetime.now() - datetime.timedelta(hours=hours)
         time_ago_iso = time_ago.isoformat()
-        cursor.execute("SELECT timestamp, value FROM temperatures WHERE timestamp >= ? ORDER BY timestamp ASC",
-                       (time_ago_iso,))
+        cursor.execute("SELECT timestamp, value FROM temperatures WHERE timestamp >= ? ORDER BY timestamp ASC", (time_ago_iso,))
         data = cursor.fetchall()
 
         if not data:
-            labels = [];
-            values = []
+            labels = []; values = []
             start_time = datetime.datetime.now() - datetime.timedelta(hours=hours)
             num_points = (hours * 12)
             for i in range(num_points):
@@ -283,9 +272,12 @@ def get_temperature_data():
         return jsonify({'labels': labels, 'values': values})
 
     except sqlite3.Error as e:
+        # KORREKTUR: Bei einem DB-Fehler (z.B. Tabelle noch nicht voll)
+        # Senden wir trotzdem Fallback-Daten und einen 200 OK Status,
+        # anstatt eines 500er-Fehlers, der das Frontend bricht.
+        print(f"WARNUNG: Datenbankfehler in get_temperature_data: {e}. Sende Fallback-Daten.")
         hours = request.args.get('hours', type=int, default=24)
-        labels = [];
-        values = []
+        labels = []; values = []
         start_time = datetime.datetime.now() - datetime.timedelta(hours=hours)
         num_points = (hours * 12)
         for i in range(num_points):
@@ -293,10 +285,9 @@ def get_temperature_data():
             labels.append(point_time.isoformat())
             sample_temp = 22.0 + (i % 20 - 10) * 0.2 + (i % 5 - 2.5) * 0.5
             values.append(round(sample_temp, 2))
-        return jsonify({'labels': labels, 'values': values}), 500
+        return jsonify({'labels': labels, 'values': values}), 200 # KORREKTUR: War 500
     finally:
         if conn: conn.close()
-
 
 # --- API Endpunkte (Lüfter, Unverändert) ---
 @app.route('/api/luefter_logs')
@@ -345,7 +336,6 @@ def save_luefter_settings():
     else:
         return jsonify({'error': message}), 500
 
-
 @app.route('/api/luefter_toggle', methods=['POST'])
 # ... (Funktion bleibt unverändert) ...
 def luefter_toggle():
@@ -392,8 +382,7 @@ def list_plants():
     conn = get_db_connection()
     cursor = conn.cursor()
     # NEU: Auch seed_date abrufen
-    cursor.execute(
-        "SELECT id, name, strain, type, keim_date, seed_date FROM plants WHERE status='Active' ORDER BY name")
+    cursor.execute("SELECT id, name, strain, type, keim_date, seed_date FROM plants WHERE status='Active' ORDER BY name")
     plants = []
     for row in cursor.fetchall():
         plants.append({
@@ -407,7 +396,6 @@ def list_plants():
     conn.close()
     return jsonify(plants)
 
-
 @app.route('/api/plants', methods=['POST'])
 def add_plant():
     """Fügt eine neue Pflanze hinzu."""
@@ -416,7 +404,7 @@ def add_plant():
     strain = data.get('strain')
     p_type = data.get('type')
     keim_date = data.get('keim_date')
-    seed_date = data.get('seed_date')  # NEU
+    seed_date = data.get('seed_date') # NEU
 
     if not all([name, strain, p_type, keim_date, seed_date]):
         return jsonify({'error': 'Name, Sorte, Typ, Keimdatum und Setzdatum sind erforderlich.'}), 400
@@ -435,7 +423,6 @@ def add_plant():
         return jsonify({'error': f'Datenbankfehler: {e}'}), 500
     finally:
         conn.close()
-
 
 @app.route('/api/journal/<int:plant_id>', methods=['GET'])
 def get_journal(plant_id):
@@ -456,7 +443,6 @@ def get_journal(plant_id):
         })
     conn.close()
     return jsonify(journal_entries)
-
 
 @app.route('/api/journal', methods=['POST'])
 def add_journal_entry():
@@ -540,20 +526,21 @@ def index():
         cursor.execute("SELECT id, name, keim_date FROM plants WHERE status='Active' ORDER BY name")
         for p_id, name, keim_date in cursor.fetchall():
             days, weeks = get_plant_age(keim_date)
-            last_cycle = get_last_cycle(p_id)  # Holt den persistenten Zyklus
+            last_cycle = get_last_cycle(p_id) # Holt den persistenten Zyklus
             plants_data.append({
                 'id': p_id,
                 'name': name,
                 'keim_date': keim_date,
                 'age_days': days,
                 'age_weeks': weeks,
-                'last_cycle': last_cycle  # NEU: Für die Vorauswahl im Dropdown
+                'last_cycle': last_cycle # NEU: Für die Vorauswahl im Dropdown
             })
 
     except sqlite3.Error:
         pass
     finally:
         if conn: conn.close()
+
 
     return render_template('index.html',
                            current_time=current_time,
@@ -566,32 +553,27 @@ def index():
                            luefter_on_minutes=luefter_settings['on_minutes'],
                            luefter_off_minutes=luefter_settings['off_minutes'],
                            luefter_logs=luefter_logs,
-                           plants=plants_data)  # NEU: Liste der Pflanzen mit last_cycle
-
+                           plants=plants_data) # NEU: Liste der Pflanzen mit last_cycle
 
 @app.route('/create_timelapse', methods=['POST'])
 def create_timelapse():
     # ... (Logik für Zeitraffer, hier stark gekürzt) ...
     return render_template('timelapse_status.html', message="Zeitraffer-Logik hier", video_url=None)
 
-
 @app.route('/timelapses')
 def list_timelapses():
     # ... (Logik für Zeitraffer, hier stark gekürzt) ...
     return render_template('timelapse_list.html', timelapses=[])
-
 
 @app.route('/timelapses/<filename>')
 def download_timelapse(filename):
     # ... (Logik für Zeitraffer, hier stark gekürzt) ...
     return send_from_directory(TIMELAPSE_DIR, filename, as_attachment=True)
 
-
 @app.route('/favicon.ico')
 def favicon():
     return send_from_directory(os.path.join(app.root_path, 'static'),
                                'favicon.ico', mimetype='image/vnd.microsoft.icon')
-
 
 # --- DB INITIALISIERUNG ---
 def initialize_db_if_needed():
@@ -599,76 +581,45 @@ def initialize_db_if_needed():
     cursor = conn.cursor()
 
     # 1. Lüfter Logs und Settings (bestehend)
-    cursor.execute(
-        "CREATE TABLE IF NOT EXISTS luefter_logs (id INTEGER PRIMARY KEY AUTOINCREMENT, timestamp TEXT NOT NULL, action TEXT NOT NULL, status TEXT NOT NULL)")
+    cursor.execute("CREATE TABLE IF NOT EXISTS luefter_logs (id INTEGER PRIMARY KEY AUTOINCREMENT, timestamp TEXT NOT NULL, action TEXT NOT NULL, status TEXT NOT NULL)")
     cursor.execute("CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEXT NOT NULL)")
+
+    # KORREKTUR: Fehlende Temperatur-Tabelle für den Graphen hinzugefügt
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS temperatures (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            timestamp TEXT NOT NULL,
+            value REAL NOT NULL
+        )
+    """)
 
     # 2. Pflanzen Tabelle
     cursor.execute("""
-                   CREATE TABLE IF NOT EXISTS plants
-                   (
-                       id
-                       INTEGER
-                       PRIMARY
-                       KEY
-                       AUTOINCREMENT,
-                       name
-                       TEXT
-                       NOT
-                       NULL,
-                       strain
-                       TEXT,
-                       type
-                       TEXT, -- P/F/A
-                       keim_date
-                       TEXT
-                       NOT
-                       NULL, -- YYYY-MM-DD
-                       seed_date
-                       TEXT
-                       NOT
-                       NULL, -- NEU: YYYY-MM-DD (Datum des Setzens)
-                       status
-                       TEXT
-                       NOT
-                       NULL  -- Active/Archived
-                   )
-                   """)
+        CREATE TABLE IF NOT EXISTS plants (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            name TEXT NOT NULL,
+            strain TEXT,
+            type TEXT, -- P/F/A
+            keim_date TEXT NOT NULL, -- YYYY-MM-DD
+            seed_date TEXT NOT NULL, -- NEU: YYYY-MM-DD (Datum des Setzens)
+            status TEXT NOT NULL -- Active/Archived
+        )
+    """)
 
     # 3. Journal Tabelle
     cursor.execute("""
-                   CREATE TABLE IF NOT EXISTS journal
-                   (
-                       id
-                       INTEGER
-                       PRIMARY
-                       KEY
-                       AUTOINCREMENT,
-                       plant_id
-                       INTEGER,
-                       timestamp
-                       TEXT
-                       NOT
-                       NULL,
-                       cycle
-                       TEXT, -- Keimling, Vegetation, Blüte
-                       notes
-                       TEXT,
-                       image_path
-                       TEXT,
-                       FOREIGN
-                       KEY
-                   (
-                       plant_id
-                   ) REFERENCES plants
-                   (
-                       id
-                   )
-                       )
-                   """)
+        CREATE TABLE IF NOT EXISTS journal (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            plant_id INTEGER,
+            timestamp TEXT NOT NULL,
+            cycle TEXT, -- Keimling, Vegetation, Blüte
+            notes TEXT,
+            image_path TEXT,
+            FOREIGN KEY (plant_id) REFERENCES plants(id)
+        )
+    """)
     conn.commit()
     conn.close()
-
 
 if __name__ == '__main__':
     initialize_db_if_needed()
