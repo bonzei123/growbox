@@ -17,10 +17,11 @@ function getDaysSince(dateString) {
     // Achtung: Das Keimdatum muss als YYYY-MM-DD übergeben werden, um Probleme zu vermeiden
     const targetDate = new Date(dateString + 'T00:00:00');
 
+    // Prüfe auf ungültiges Datum oder Datum in der Zukunft
     if (isNaN(targetDate.getTime()) || targetDate > today) return 0;
 
     const diffTime = Math.abs(today.getTime() - targetDate.getTime());
-    // Korrektur: Nutzt Math.floor() + 1, um den Keimtag als Tag 1 zu zählen
+    // KORREKTUR: Nutzt Math.floor() + 1, um den Keimtag als Tag 1 zu zählen
     const diffDays = Math.floor(diffTime / (1000 * 60 * 60 * 24));
     return diffDays + 1;
 }
@@ -74,8 +75,13 @@ async function updateChart(hours) {
 
 // Diese Funktion initialisiert den Chart, wenn die Seite geladen wird
 function initializeChart() {
-    const ctx = document.getElementById("tempChart").getContext("2d");
-    tempChartInstance = new Chart(ctx, {
+    // Stellt sicher, dass das Canvas-Element existiert, bevor der Chart initialisiert wird
+    const ctx = document.getElementById("tempChart");
+    if (!ctx) {
+        console.error("Chart-Canvas 'tempChart' nicht gefunden.");
+        return;
+    }
+    tempChartInstance = new Chart(ctx.getContext("2d"), {
         type: "line",
         data: {
             labels: [],
@@ -126,6 +132,8 @@ function initializeChart() {
 // Lädt die Log-Einträge neu
 async function loadLuefterLogs() {
     const logOutput = document.getElementById('luefter-log-output');
+    if (!logOutput) return; // Stoppt, wenn das Element nicht auf der Seite ist
+
     try {
         const response = await fetch('/api/luefter_logs');
         if (!response.ok) { throw new Error(`Server-Fehler: ${response.status}`); }
@@ -178,46 +186,52 @@ async function toggleLuefter(command) {
 }
 
 
-// Behandelt das Speichern der Cron-Minuten
-document.getElementById('luefter-settings-form').addEventListener('submit', async function(e) {
-    e.preventDefault();
+// Event Listener für das Cronjob-Formular
+const luefterSettingsForm = document.getElementById('luefter-settings-form');
+if (luefterSettingsForm) {
+    luefterSettingsForm.addEventListener('submit', async function(e) {
+        e.preventDefault();
 
-    const statusElement = document.getElementById('settings-status');
-    statusElement.textContent = 'Speichere und aktualisiere Cronjobs...';
-    statusElement.style.color = '#fb923c';
+        const statusElement = document.getElementById('settings-status');
+        statusElement.textContent = 'Speichere und aktualisiere Cronjobs...';
+        statusElement.style.color = '#fb923c';
 
-    const formData = new FormData(this);
-    const onMinutes = formData.get('on_minutes').trim();
-    const offMinutes = formData.get('off_minutes').trim();
+        const formData = new FormData(this);
+        const onMinutes = formData.get('on_minutes').trim();
+        const offMinutes = formData.get('off_minutes').trim();
 
-    try {
-        const response = await fetch('/api/luefter_settings', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ on_minutes: onMinutes, off_minutes: offMinutes })
-        });
+        try {
+            const response = await fetch('/api/luefter_settings', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ on_minutes: onMinutes, off_minutes: offMinutes })
+            });
 
-        const result = await response.json();
+            const result = await response.json();
 
-        if (response.ok) {
-            statusElement.textContent = result.message;
-            statusElement.style.color = '#4ade80';
-        } else {
-            statusElement.textContent = `Fehler: ${result.error}`;
+            if (response.ok) {
+                statusElement.textContent = result.message;
+                statusElement.style.color = '#4ade80';
+            } else {
+                statusElement.textContent = `Fehler: ${result.error}`;
+                statusElement.style.color = '#f87171';
+            }
+        } catch (error) {
+            console.error("Fehler beim Speichern der Einstellungen:", error);
+            statusElement.textContent = 'Netzwerkfehler beim Speichern der Einstellungen.';
             statusElement.style.color = '#f87171';
         }
-    } catch (error) {
-        console.error("Fehler beim Speichern der Einstellungen:", error);
-        statusElement.textContent = 'Netzwerkfehler beim Speichern der Einstellungen.';
-        statusElement.style.color = '#f87171';
-    }
-});
+    });
+}
 
 
 // --- TAGEBUCH FUNKTIONALITÄT ---
 
+// Globale Variable, um die vollen Pflanzendaten zu speichern
+let allPlantData = {};
+
 // Rendert die Chronologie-Einträge
-function renderJournalEntries(entries, plantName) {
+function renderJournalEntries(entries, plantName, keimDate) {
     const container = document.getElementById('journal-entries-container');
     const plantNameDisplay = document.getElementById('chronology-plant-name');
     container.innerHTML = '';
@@ -228,15 +242,15 @@ function renderJournalEntries(entries, plantName) {
         return;
     }
 
-    const selectedOption = document.getElementById('plant-select').options[document.getElementById('plant-select').selectedIndex];
-    const keimDate = selectedOption.getAttribute('data-keimdate');
-
     entries.forEach(entry => {
         // Berechne das Alter der Pflanze ZUM ZEITPUNKT des Eintrags
         const entryDate = new Date(entry.timestamp);
         const keimDateTime = new Date(keimDate + 'T00:00:00');
-        const diffTime = entryDate.getTime() - keimDateTime.getTime();
-        const days = Math.floor(diffTime / (1000 * 60 * 60 * 24)) + 1; // Tag 1 ist der Keimtag
+        let days = 0;
+        if (entryDate >= keimDateTime) {
+            const diffTime = entryDate.getTime() - keimDateTime.getTime();
+            days = Math.floor(diffTime / (1000 * 60 * 60 * 24)) + 1; // Tag 1 ist der Keimtag
+        }
 
         const card = document.createElement('div');
         card.className = 'journal-entry-card';
@@ -254,7 +268,7 @@ function renderJournalEntries(entries, plantName) {
             ${imageHtml}
             <div style="flex-grow: 1;">
                 <p style="font-size: 0.8rem; color: #9ca3af; margin-bottom: 0.3rem;">
-                    ${entry.timestamp.split(' ')[0]} (Tag ${days}) | Zyklus: <span style="font-weight: bold; color: #4ade80;">${entry.cycle}</span>
+                    ${entry.timestamp.split(' ')[0]} ${days > 0 ? `(Tag ${days})` : ''} | Zyklus: <span style="font-weight: bold; color: #4ade80;">${entry.cycle}</span>
                 </p>
                 <p style="font-size: 1rem; margin-bottom: 0.5rem;">${entry.notes}</p>
             </div>
@@ -263,87 +277,207 @@ function renderJournalEntries(entries, plantName) {
     });
 }
 
-// Lädt die Chronologie, wenn eine Pflanze ausgewählt wird
-document.getElementById('plant-select').addEventListener('change', async function() {
-    const plantId = this.value;
-    const selectedOption = this.options[this.selectedIndex];
-    const plantName = selectedOption.text.split('(')[0].trim();
-    const keimDate = selectedOption.getAttribute('data-keimdate');
-    const lastCycle = selectedOption.getAttribute('data-lastcycle'); // NEU: Persistenter Zyklus
+// Zeigt die Meilenstein-Datumseingaben basierend auf dem Pflanzenstatus an
+function updateMilestoneInputs(plant) {
+    const container = document.getElementById('journal-milestone-inputs');
+    container.innerHTML = ''; // Leeren
 
-    const ageDisplay = document.getElementById('plant-age-display');
-    const form = document.getElementById('journal-entry-form');
-    const cycleDropdown = document.getElementById('journal-cycle');
-
-    if (!plantId) {
-        ageDisplay.textContent = 'Pflanzenalter: Bitte Pflanze auswählen.';
-        form.style.display = 'none';
-        document.getElementById('journal-entries-container').innerHTML = `<p style="color: #9ca3af;">Wählen Sie eine Pflanze, um die Chronologie anzuzeigen.</p>`;
-        document.getElementById('chronology-plant-name').textContent = '...';
+    if (plant.end_date) {
+        // Pflanze ist archiviert, keine Eingaben mehr
+        container.innerHTML = `<p style="color: #4ade80; font-weight: bold;">Dieser Zyklus ist abgeschlossen (Beendet am ${plant.end_date}).</p>`;
+        document.getElementById('journal-entry-form').style.display = 'none'; // Formular ausblenden
+        document.getElementById('journal-pdf-export').style.display = 'block'; // PDF-Button anzeigen
         return;
     }
 
-    form.style.display = 'block';
+    document.getElementById('journal-entry-form').style.display = 'block';
+    document.getElementById('journal-pdf-export').style.display = 'block';
 
-    // NEU: Setze das Zyklus-Dropdown auf den zuletzt verwendeten Wert
-    if (lastCycle) {
-        cycleDropdown.value = lastCycle;
+    let nextMilestone = '';
+
+    if (!plant.keim_date) {
+        nextMilestone = 'keim_date';
+        container.innerHTML = `
+            <div class="input-group">
+                <label for="milestone-date">Wann ist die Pflanze gekeimt?</label>
+                <input type="date" id="milestone-date" class="input-field">
+                <button onclick="saveMilestoneDate('${nextMilestone}')" class="button button-secondary button-small" style="margin-top: 5px;">Keimdatum speichern</button>
+            </div>`;
+    } else if (!plant.bluete_date) {
+        nextMilestone = 'bluete_date';
+        container.innerHTML = `
+            <div class="input-group">
+                <label for="milestone-date">Wann ging die Pflanze in die Blüte?</label>
+                <input type="date" id="milestone-date" class="input-field">
+                <button onclick="saveMilestoneDate('${nextMilestone}')" class="button button-secondary button-small" style="margin-top: 5px;">Blütedatum speichern</button>
+            </div>`;
+    } else if (!plant.ernte_date) {
+        nextMilestone = 'ernte_date';
+         container.innerHTML = `
+            <div class="input-group">
+                <label for="milestone-date">Wann wurde geerntet?</label>
+                <input type="date" id="milestone-date" class="input-field">
+                <button onclick="saveMilestoneDate('${nextMilestone}')" class="button button-secondary button-small" style="margin-top: 5px;">Erntedatum speichern</button>
+            </div>`;
+    } else if (!plant.end_date) {
+        nextMilestone = 'end_date';
+         container.innerHTML = `
+            <div class="input-group">
+                <label for="milestone-date">Wann wurde der Zyklus beendet (z.B. Trocknung vorbei)?</label>
+                <input type="date" id="milestone-date" class="input-field">
+                <button onclick="saveMilestoneDate('${nextMilestone}')" class="button button-secondary button-small" style="margin-top: 5px;">Enddatum speichern</button>
+            </div>`;
+    }
+}
+
+// Speichert ein Meilenstein-Datum
+async function saveMilestoneDate(dateType) {
+    const plantId = document.getElementById('plant-select').value;
+    const dateValue = document.getElementById('milestone-date').value;
+
+    if (!dateValue) {
+        alert('Bitte ein Datum auswählen.');
+        return;
     }
 
-    // Altersanzeige aktualisieren
-    const days = getDaysSince(keimDate);
-    const weeks = Math.floor((days - 1) / 7) + 1; // Woche 1 (Tag 1-7), Woche 2 (Tag 8-14)
-    ageDisplay.textContent = `Pflanzenalter: ${weeks}. Woche / Tag ${days}`;
-
-    // Chronologie laden
     try {
-        const response = await fetch(`/api/journal/${plantId}`);
-        const entries = await response.json();
-        renderJournalEntries(entries, plantName);
-    } catch (error) {
-        console.error("Fehler beim Laden des Journals:", error);
-        document.getElementById('journal-entries-container').innerHTML = `<p style="color: #f87171;">Fehler beim Laden der Einträge.</p>`;
-    }
-});
-
-// Speichert den neuen Tagebucheintrag
-document.getElementById('journal-entry-form').addEventListener('submit', async function(e) {
-    e.preventDefault();
-
-    const plantSelect = document.getElementById('plant-select');
-    const plantId = plantSelect.value;
-    const notes = document.getElementById('journal-notes').value.trim();
-    const cycle = document.getElementById('journal-cycle').value;
-    const statusElement = document.getElementById('journal-status');
-
-    statusElement.textContent = 'Speichere Eintrag und Foto...';
-    statusElement.style.color = '#fb923c';
-
-    try {
-        const response = await fetch('/api/journal', {
+        const response = await fetch(`/api/plant/${plantId}/date`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ plant_id: plantId, cycle: cycle, notes: notes })
+            body: JSON.stringify({ date_type: dateType, date_value: dateValue })
         });
-
         const result = await response.json();
 
         if (response.ok) {
-            statusElement.textContent = result.message;
-            statusElement.style.color = '#4ade80';
-            document.getElementById('journal-notes').value = '';
-            plantSelect.dispatchEvent(new Event('change'));
-
+            // Aktualisiere die globalen Pflanzendaten und die Anzeige
+            allPlantData[plantId][dateType] = dateValue;
+            updateMilestoneInputs(allPlantData[plantId]);
         } else {
-            statusElement.textContent = `Fehler: ${result.error}`;
-            statusElement.style.color = '#f87171';
+            alert(`Fehler: ${result.error}`);
         }
     } catch (error) {
-        console.error("Netzwerkfehler beim Speichern des Tagebuchs:", error);
-        statusElement.textContent = 'Netzwerkfehler beim Speichern des Tagebuchs.';
-        statusElement.style.color = '#f87171';
+        alert(`Netzwerkfehler: ${error.message}`);
     }
-});
+}
+
+
+// Lädt die Chronologie, wenn eine Pflanze ausgewählt wird
+const plantSelect = document.getElementById('plant-select');
+if (plantSelect) {
+    plantSelect.addEventListener('change', async function() {
+        const plantId = this.value;
+        const selectedOption = this.options[this.selectedIndex];
+
+        const ageDisplay = document.getElementById('plant-age-display');
+        const form = document.getElementById('journal-entry-form');
+        const cycleDropdown = document.getElementById('journal-cycle');
+        const chronologyContainer = document.getElementById('journal-entries-container');
+        const chronologyName = document.getElementById('chronology-plant-name');
+        const milestoneContainer = document.getElementById('journal-milestone-inputs');
+        const pdfButton = document.getElementById('journal-pdf-export');
+
+        if (!plantId) {
+            ageDisplay.textContent = 'Pflanzenalter: Bitte Pflanze auswählen.';
+            form.style.display = 'none';
+            milestoneContainer.innerHTML = '';
+            pdfButton.style.display = 'none';
+            chronologyContainer.innerHTML = `<p style="color: #9ca3af;">Wählen Sie eine Pflanze, um die Chronologie anzuzeigen.</p>`;
+            chronologyName.textContent = '...';
+            return;
+        }
+
+        // Lade die vollen Daten für diese Pflanze (aus dem globalen Objekt)
+        const plant = allPlantData[plantId];
+        const plantName = plant.name;
+
+        form.style.display = 'block';
+
+        // Setze das Zyklus-Dropdown auf den zuletzt verwendeten Wert
+        if (plant.last_cycle) {
+            cycleDropdown.value = plant.last_cycle;
+        }
+
+        // Altersanzeige aktualisieren (nur wenn Keimdatum gesetzt ist)
+        if (plant.keim_date) {
+            const days = getDaysSince(plant.keim_date);
+            const weeks = Math.floor((days - 1) / 7) + 1;
+            ageDisplay.textContent = `Pflanzenalter: ${weeks}. Woche / Tag ${days}`;
+        } else {
+            ageDisplay.textContent = `Pflanze gesetzt am ${plant.seed_date}. Warte auf Keimung...`;
+        }
+
+        // Meilenstein-Eingabefelder anzeigen
+        updateMilestoneInputs(plant);
+
+        // Chronologie laden
+        try {
+            const response = await fetch(`/api/journal/${plantId}`);
+            const entries = await response.json();
+            renderJournalEntries(entries, plantName, plant.keim_date);
+        } catch (error) {
+            console.error("Fehler beim Laden des Journals:", error);
+            chronologyContainer.innerHTML = `<p style="color: #f87171;">Fehler beim Laden der Einträge.</p>`;
+        }
+    });
+}
+
+// Speichert den neuen Tagebucheintrag
+const journalEntryForm = document.getElementById('journal-entry-form');
+if (journalEntryForm) {
+    journalEntryForm.addEventListener('submit', async function(e) {
+        e.preventDefault();
+
+        const plantSelect = document.getElementById('plant-select');
+        const plantId = plantSelect.value;
+        const notes = document.getElementById('journal-notes').value.trim();
+        const cycle = document.getElementById('journal-cycle').value;
+        const statusElement = document.getElementById('journal-status');
+
+        statusElement.textContent = 'Speichere Eintrag und Foto...';
+        statusElement.style.color = '#fb923c';
+
+        try {
+            const response = await fetch('/api/journal', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ plant_id: plantId, cycle: cycle, notes: notes })
+            });
+
+            const result = await response.json();
+
+            if (response.ok) {
+                statusElement.textContent = result.message;
+                statusElement.style.color = '#4ade80';
+                document.getElementById('journal-notes').value = '';
+
+                // Aktualisiere den 'last_cycle' im globalen Objekt
+                allPlantData[plantId].last_cycle = cycle;
+
+                // Lade Chronologie neu
+                plantSelect.dispatchEvent(new Event('change'));
+
+            } else {
+                statusElement.textContent = `Fehler: ${result.error}`;
+                statusElement.style.color = '#f87171';
+            }
+        } catch (error) {
+            console.error("Netzwerkfehler beim Speichern des Tagebuchs:", error);
+            statusElement.textContent = 'Netzwerkfehler beim Speichern des Tagebuchs.';
+            statusElement.style.color = '#f87171';
+        }
+    });
+}
+
+// PDF-Export-Button
+const pdfExportButton = document.getElementById('journal-pdf-export');
+if (pdfExportButton) {
+    pdfExportButton.addEventListener('click', function() {
+        const plantId = document.getElementById('plant-select').value;
+        if (plantId) {
+            window.location.href = `/api/journal/${plantId}/export`;
+        }
+    });
+}
 
 
 // --- PFLANZEN VERWALTUNG MODAL FUNKTIONALITÄT ---
@@ -357,24 +491,46 @@ function openPlantManager() {
 // Schließt das Modal
 function closePlantManager() {
     document.getElementById('plant-manager-modal').style.display = 'none';
-    // Aktualisiere das Haupt-Dropdown nach dem Schließen (falls neue Pflanzen hinzugefügt wurden)
-    // Wir verwenden einen sanften Reload statt window.location.reload()
-    fetch('/api/plants').then(res => res.json()).then(plants => {
+    // Aktualisiere das Haupt-Dropdown nach dem Schließen
+    loadPlantDataForDropdown();
+}
+
+// Lädt die globale Pflanzenliste für das Haupt-Dropdown
+async function loadPlantDataForDropdown() {
+    try {
+        const response = await fetch('/api/plants');
+        if (!response.ok) return;
+        const plants = await response.json();
+
         const select = document.getElementById('plant-select');
         // Entferne alte Optionen (außer der ersten "--Pflanze auswählen--")
         while (select.options.length > 1) {
             select.remove(1);
         }
-        // Füge neue Optionen hinzu
+
+        // Lösche das globale Objekt und befülle es neu
+        allPlantData = {};
+
         plants.forEach(plant => {
-            const days = getDaysSince(plant.keim_date);
-            const option = new Option(`${plant.name} (Tag ${days})`, plant.id);
+            allPlantData[plant.id] = plant; // Speichere volle Daten global
+
+            let ageText = `(Gesetzt: ${plant.seed_date})`;
+            if (plant.keim_date) {
+                const days = getDaysSince(plant.keim_date);
+                ageText = `(Tag ${days})`;
+            }
+
+            const option = new Option(`${plant.name} ${ageText}`, plant.id);
             option.setAttribute('data-keimdate', plant.keim_date);
-            option.setAttribute('data-lastcycle', plant.last_cycle || 'Keimling'); // Fallback
+            option.setAttribute('data-lastcycle', plant.last_cycle || 'Keimling');
             select.add(option);
         });
-    });
+
+    } catch (error) {
+        console.error("Fehler beim Neuladen der Pflanzen-Dropdown-Liste:", error);
+    }
 }
+
 
 // Lädt die Liste der vorhandenen Pflanzen im Modal
 async function loadPlantListForManager() {
@@ -382,18 +538,20 @@ async function loadPlantListForManager() {
     listContainer.innerHTML = '<p style="color: #9ca3af;">Lade Pflanzen...</p>';
 
     try {
-        const response = await fetch('/api/plants');
-        if (!response.ok) { throw new Error('Fehler beim Laden der Pflanzenliste.'); }
-        const plants = await response.json();
+        // Wir verwenden die globalen Daten, falls sie schon geladen sind,
+        // oder fetchen sie neu, wenn das Modal direkt geöffnet wird.
+        if (Object.keys(allPlantData).length === 0) {
+            await loadPlantDataForDropdown();
+        }
 
-        if (plants.length === 0) {
+        if (Object.keys(allPlantData).length === 0) {
             listContainer.innerHTML = '<p style="color: #fb923c;">Noch keine Pflanzen gespeichert.</p>';
             return;
         }
 
         let html = '<ul style="list-style-type: none; padding: 0;">';
-        plants.forEach(p => {
-            const ageInfo = `(Keimung: ${p.keim_date}, Gesetzt: ${p.seed_date})`;
+        Object.values(allPlantData).forEach(p => {
+            const ageInfo = `(Keimung: ${p.keim_date || 'N/A'}, Gesetzt: ${p.seed_date})`;
             html += `
                 <li style="border-bottom: 1px solid #333; padding: 8px 0; display: flex; justify-content: space-between; align-items: center;">
                     <span style="font-weight: bold; color: #fff;">${p.name} (${p.type})</span>
@@ -409,42 +567,48 @@ async function loadPlantListForManager() {
 }
 
 // Behandelt das Hinzufügen einer neuen Pflanze
-document.getElementById('add-plant-form').addEventListener('submit', async function(e) {
-    e.preventDefault();
-    const statusElement = document.getElementById('plant-add-status');
-    statusElement.textContent = 'Speichere Pflanze...';
-    statusElement.style.color = '#fb923c';
+const addPlantForm = document.getElementById('add-plant-form');
+if (addPlantForm) {
+    addPlantForm.addEventListener('submit', async function(e) {
+        e.preventDefault();
+        const statusElement = document.getElementById('plant-add-status');
+        statusElement.textContent = 'Speichere Pflanze...';
+        statusElement.style.color = '#fb923c';
 
-    const formData = {
-        name: document.getElementById('new-plant-name').value,
-        strain: document.getElementById('new-strain').value,
-        type: document.getElementById('new-type').value,
-        seed_date: document.getElementById('new-seed-date').value, // NEU
-        keim_date: document.getElementById('new-keim-date').value
-    };
+        const formData = {
+            name: document.getElementById('new-plant-name').value,
+            strain: document.getElementById('new-strain').value,
+            type: document.getElementById('new-type').value,
+            seed_date: document.getElementById('new-seed-date').value,
+            keim_date: document.getElementById('new-keim-date').value || null // Sende null, wenn leer
+        };
 
-    try {
-        const response = await fetch('/api/plants', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(formData)
-        });
+        try {
+            const response = await fetch('/api/plants', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(formData)
+            });
 
-        const result = await response.json();
+            const result = await response.json();
 
-        if (response.ok) {
-            statusElement.textContent = result.message;
-            statusElement.style.color = '#4ade80';
-            this.reset(); // Formular leeren
-            loadPlantListForManager(); // Liste im Modal aktualisieren
+            if (response.ok) {
+                statusElement.textContent = result.message;
+                statusElement.style.color = '#4ade80';
+                this.reset(); // Formular leeren
 
-        } else {
-            statusElement.textContent = `Fehler: ${result.error}`;
+                // Lade die globalen Daten neu, um die Modal-Liste zu aktualisieren
+                await loadPlantDataForDropdown();
+                loadPlantListForManager();
+
+            } else {
+                statusElement.textContent = `Fehler: ${result.error}`;
+                statusElement.style.color = '#f87171';
+            }
+
+        } catch (error) {
+            statusElement.textContent = 'Netzwerkfehler beim Hinzufügen der Pflanze.';
             statusElement.style.color = '#f87171';
         }
-
-    } catch (error) {
-        statusElement.textContent = 'Netzwerkfehler beim Hinzufügen der Pflanze.';
-        statusElement.style.color = '#f87171';
-    }
-});
+    });
+}

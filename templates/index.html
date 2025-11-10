@@ -236,7 +236,7 @@
 <div class="camera-section widget" id="camera-widget">
 <h2 style="color: #6ee7b7;"><i class="fas fa-camera"></i> Live-Ansicht der Box</h2>
 <!-- \_t= Parameter verhindert Browser-Caching -->
-<img src="{{ url_for('latest_photo') }}?\_t={{ current_time }}" alt="Aktuelles Foto der Growbox">
+<img src="{{ url_for('latest_photo') }}?\_t={{ current\_time }}" alt="Aktuelles Foto der Growbox">
 <div class="button-group">
 <form action="/create_timelapse" method="post">
 <button type="submit" class="button button-secondary"><i class="fas fa-hourglass-half"></i> Zeitraffer erstellen</button>
@@ -277,7 +277,7 @@
                 </div>
                 <div class="input-group">
                     <label for="new-keim-date">Keimdatum (Start Zählung):</label>
-                    <input type="date" id="new-keim-date" name="keim_date" required>
+                    <input type="date" id="new-keim-date" name="keim_date">
                 </div>
                 <div style="grid-column: span 2;">
                     <button type="submit" class="button" style="background-color: #10b981;"><i class="fas fa-plus"></i> Pflanze hinzufügen</button>
@@ -302,6 +302,7 @@
 
 <!-- Inline-Skript nur für die Initialisierung und das Modal-Handling -->
 <script>
+    // Die INITIALISIERUNG muss im Haupt-HTML-Block bleiben
     document.addEventListener("DOMContentLoaded", () => {
         // Initialisiere den Chart (Funktion aus script.js)
         initializeChart();
